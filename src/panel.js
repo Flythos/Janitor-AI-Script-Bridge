@@ -25,13 +25,19 @@ import {
     getAssignment, getAssignedScripts, assignScript, unassignScript, setAssignment,
 } from './storage.js';
 import { detectAndImport, importFile } from './importer.js';
-import { getExtensionName, openScriptEditor, refreshExtensionsPanel, reportImportResult } from './ui.js';
+import { getExtensionName, openScriptEditor, refreshExtensionsPanel, reportImportResult, getSelectedGroupMemberChid, setSelectedGroupMemberChid } from './ui.js';
 
 // `$` (jQuery) and `toastr` are page-level globals provided by SillyTavern.
 
 let panelElement = null;
 let initialized = false;
-let selectedGroupMemberChid = null;
+
+function guard(toastLabel, work) {
+    return Promise.resolve().then(work).catch(error => {
+        console.warn('[JaiBridge] Panel action failed', error);
+        toastr.error(`${toastLabel}: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+    });
+}
 
 /**
  * Appends the "Scripts" entry to the options menu and builds the panel.
@@ -66,7 +72,7 @@ export async function initScriptsPanel() {
     // Re-render when the chat (and with it the chat metadata) changes.
     const { eventSource, event_types } = await import('/scripts/events.js');
     eventSource.on(event_types.CHAT_CHANGED, () => {
-        selectedGroupMemberChid = null;
+        setSelectedGroupMemberChid(null);
         refreshPanel();
     });
 }
@@ -139,22 +145,26 @@ function wirePanel() {
     panel.find('#jai_panel_chat_file').on('change', async function () {
         const files = Array.from(this.files ?? []);
         this.value = '';
-        const { log, createdIds } = await importFiles(files);
-        for (const id of createdIds) {
-            assignChatScript(id);
-        }
-        reportImportResult(log);
+        await guard('Import failed', async () => {
+            const { log, createdIds } = await importFiles(files);
+            for (const id of createdIds) {
+                assignChatScript(id);
+            }
+            reportImportResult(log);
+        });
         refreshPanel();
     });
     panel.find('#jai_panel_chat_paste').on('click', async () => {
-        const { log, createdIds } = await pasteImport();
-        if (!log) {
-            return;
-        }
-        for (const id of createdIds) {
-            assignChatScript(id);
-        }
-        reportImportResult(log);
+        await guard('Import failed', async () => {
+            const { log, createdIds } = await pasteImport();
+            if (!log) {
+                return;
+            }
+            for (const id of createdIds) {
+                assignChatScript(id);
+            }
+            reportImportResult(log);
+        });
         refreshPanel();
     });
     panel.on('click', '#jai_panel_chat_list .jai-unassign-script', function () {
@@ -167,11 +177,15 @@ function wirePanel() {
                 refreshExtensionsPanel();
                 refreshPanel();
             },
+        }).catch(error => {
+            console.warn('[JaiBridge] Script editor failed', error);
+            toastr.error(`Editor failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
         });
     });
     panel.on('change', '#jai_panel_chat_list .jai-enable-script', function () {
         toggleScript(String($(this).closest('.jai-assign-item').data('id')));
         refreshExtensionsPanel();
+        refreshPanel();
     });
     panel.find('#jai_panel_chat_list').sortable({
         delay: getSortableDelay(),
@@ -183,53 +197,58 @@ function wirePanel() {
 
     // --- Character stack ---
     panel.on('change', '#jai_panel_member_select', function () {
-        selectedGroupMemberChid = $(this).val() !== '' ? Number($(this).val()) : null;
+        setSelectedGroupMemberChid($(this).val() !== '' ? Number($(this).val()) : null);
         refreshCharSection();
     });
-    panel.find('#jai_panel_char_add').on('click', async () => {
-        const target = getAssignmentTarget();
-        const scriptId = String(panel.find('#jai_panel_char_select').val() ?? '');
-        if (target && scriptId) {
-            await assignScript(target.chid, scriptId);
-            refreshPanel();
-        }
+    panel.find('#jai_panel_char_add').on('click', () => {
+        void guard('Assignment failed', async () => {
+            const target = getAssignmentTarget();
+            const scriptId = String(panel.find('#jai_panel_char_select').val() ?? '');
+            if (target && scriptId) {
+                await assignScript(target.chid, scriptId);
+            }
+        }).then(refreshPanel);
     });
     panel.find('#jai_panel_char_import').on('click', () => panel.find('#jai_panel_char_file').trigger('click'));
     panel.find('#jai_panel_char_file').on('change', async function () {
         const files = Array.from(this.files ?? []);
         this.value = '';
-        const target = getAssignmentTarget();
-        if (!target) {
-            return;
-        }
-        const { log, createdIds } = await importFiles(files);
-        for (const id of createdIds) {
-            await assignScript(target.chid, id);
-        }
-        reportImportResult(log);
-        refreshPanel();
-    });
-    panel.find('#jai_panel_char_paste').on('click', async () => {
-        const { log, createdIds } = await pasteImport();
-        if (!log) {
-            return;
-        }
-        const target = getAssignmentTarget();
-        if (target) {
+        await guard('Import failed', async () => {
+            const target = getAssignmentTarget();
+            if (!target) {
+                return;
+            }
+            const { log, createdIds } = await importFiles(files);
             for (const id of createdIds) {
                 await assignScript(target.chid, id);
             }
-        }
-        reportImportResult(log);
+            reportImportResult(log);
+        });
         refreshPanel();
     });
-    panel.on('click', '#jai_panel_char_list .jai-unassign-script', async function () {
-        const target = getAssignmentTarget();
-        if (!target) {
-            return;
-        }
-        await unassignScript(target.chid, String($(this).closest('.jai-assign-item').data('id')));
+    panel.find('#jai_panel_char_paste').on('click', async () => {
+        await guard('Import failed', async () => {
+            const { log, createdIds } = await pasteImport();
+            if (!log) {
+                return;
+            }
+            const target = getAssignmentTarget();
+            if (target) {
+                for (const id of createdIds) {
+                    await assignScript(target.chid, id);
+                }
+            }
+            reportImportResult(log);
+        });
         refreshPanel();
+    });
+    panel.on('click', '#jai_panel_char_list .jai-unassign-script', function () {
+        void guard('Unassign failed', async () => {
+            const target = getAssignmentTarget();
+            if (target) {
+                await unassignScript(target.chid, String($(this).closest('.jai-assign-item').data('id')));
+            }
+        }).then(refreshPanel);
     });
     panel.on('click', '#jai_panel_char_list .jai-edit-script', function () {
         openScriptEditor(String($(this).closest('.jai-assign-item').data('id')), {
@@ -237,21 +256,25 @@ function wirePanel() {
                 refreshExtensionsPanel();
                 refreshPanel();
             },
+        }).catch(error => {
+            console.warn('[JaiBridge] Script editor failed', error);
+            toastr.error(`Editor failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
         });
     });
     panel.on('change', '#jai_panel_char_list .jai-enable-script', function () {
         toggleScript(String($(this).closest('.jai-assign-item').data('id')));
         refreshExtensionsPanel();
+        refreshPanel();
     });
     panel.find('#jai_panel_char_list').sortable({
         delay: getSortableDelay(),
-        stop: async () => {
-            const target = getAssignmentTarget();
-            if (!target) {
-                return;
-            }
-            await setAssignment(target.chid, readListOrder('#jai_panel_char_list'));
-            refreshPanel();
+        stop: () => {
+            void guard('Saving the order failed', async () => {
+                const target = getAssignmentTarget();
+                if (target) {
+                    await setAssignment(target.chid, readListOrder('#jai_panel_char_list'));
+                }
+            }).then(refreshPanel);
         },
     });
 }
@@ -350,18 +373,23 @@ function refreshCharSection() {
     if (context.characterId === undefined && context.groupId) {
         const group = (context.groups ?? []).find(candidate => candidate.id === context.groupId);
         const members = (group?.members ?? [])
-            .map(avatar => ({ chid: (context.characters ?? []).findIndex(character => character.avatar === avatar) }))
+            .map(avatar => {
+                const chid = (context.characters ?? []).findIndex(character => character.avatar === avatar);
+                return { chid, avatar };
+            })
             .filter(member => member.chid !== -1);
+        let current = getSelectedGroupMemberChid();
         if (members.length > 0) {
             memberWrapper.removeClass('jai-hidden');
-            if (selectedGroupMemberChid === null || !members.some(member => member.chid === selectedGroupMemberChid)) {
-                selectedGroupMemberChid = members[0].chid;
+            if (current === null || !members.some(member => member.chid === current)) {
+                current = members[0].chid;
+                setSelectedGroupMemberChid(current);
             }
             const memberSelect = memberWrapper.find('#jai_panel_member_select');
             memberSelect.empty();
             for (const member of members) {
                 const name = context.characters[member.chid]?.name ?? member.avatar;
-                memberSelect.append(`<option value="${member.chid}" ${member.chid === selectedGroupMemberChid ? 'selected' : ''}>${escapeHtml(name)}</option>`);
+                memberSelect.append(`<option value="${member.chid}" ${member.chid === current ? 'selected' : ''}>${escapeHtml(name)}</option>`);
             }
         } else {
             memberWrapper.addClass('jai-hidden');
@@ -420,7 +448,8 @@ function fillSelect(select, available) {
 
 /**
  * Which character the character-stack section edits: the selected character in
- * solo chats, or the picked group member when a group chat is open.
+ * solo chats, or the picked group member when a group chat is open. Uses the
+ * group-member selection shared with the Extensions panel.
  */
 function getAssignmentTarget() {
     const context = getContext();
@@ -428,6 +457,7 @@ function getAssignmentTarget() {
         const character = context.characters[context.characterId];
         return character ? { chid: context.characterId, name: character.name } : null;
     }
+    const selectedGroupMemberChid = getSelectedGroupMemberChid();
     if (context.groupId && selectedGroupMemberChid !== null) {
         const character = context.characters[selectedGroupMemberChid];
         return character ? { chid: selectedGroupMemberChid, name: character.name } : null;

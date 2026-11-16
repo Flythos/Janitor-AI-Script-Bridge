@@ -48,6 +48,8 @@ jQuery(async () => {
         }
     } catch (error) {
         console.error('[JaiBridge] Failed to initialize:', error);
-        toastr?.error('Janitor AI Script Bridge failed to initialize. Check the console.', 'Janitor AI Script Bridge');
+        if (typeof toastr === 'function') {
+            toastr.error('Janitor AI Script Bridge failed to initialize. Check the console.', 'Janitor AI Script Bridge');
+        }
     }
 });

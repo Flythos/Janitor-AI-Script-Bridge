@@ -135,16 +135,6 @@
     background-color: rgba(120, 120, 255, 0.15);
 }
 
-#jai_bridge_settings .jai-script-item .jai-badge.lorebook {
-    background-color: rgba(120, 255, 150, 0.12);
-}
-
-#jai_bridge_settings .jai-script-item .jai-depth {
-    flex: 0 0 auto;
-    font-size: 0.85em;
-    opacity: 0.75;
-}
-
 #jai_bridge_settings .jai-script-item .jai-script-actions {
     flex: 0 0 auto;
     display: flex;
@@ -224,6 +214,32 @@
     flex: 0 0 auto;
     font-size: 0.85em;
     opacity: 0.75;
+}
+
+#jai_bridge_settings .jai-book-item .jai-badge {
+    flex: 0 0 auto;
+    font-size: 0.8em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    opacity: 0.85;
+}
+
+#jai_bridge_settings .jai-book-item .jai-badge.native {
+    background-color: rgba(120, 255, 150, 0.12);
+}
+
+#jai_bridge_settings .jai-book-item .jai-badge.bridged {
+    background-color: rgba(255, 170, 80, 0.15);
+}
+
+.jai-debug-report .jai-book-skip {
+    opacity: 0.55;
+}
+
+.jai-debug-report .jai-book-anchor {
+    opacity: 0.7;
+    font-size: 0.85em;
 }
 
 /* Options grid */
@@ -317,6 +333,6 @@
 }
 
 .jai-debug-report .jai-injection-summary,
-.jai-debug-report .jai-gating-summary {
+.jai-debug-report .jai-lorebook-summary {
     margin-top: 0.4rem;
 }

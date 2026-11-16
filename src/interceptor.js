@@ -26,15 +26,23 @@
 //
 // Strict Janitor parity: scripts CANNOT edit or remove chat messages —
 // mutations to context.chat.last_messages / context.chat.last_message are
-// ignored. Lorebook conversion happens at import time only (native ST book).
+// ignored. Native lorebooks are plain ST books (no runtime involvement);
+// lorebooks attached in **Bridge mode** (data.extensions.jaiBridgeBooks) are
+// enforced by the Janitor lorebook engine AFTER the scripts run — entry
+// content rides the same single-generation injection/restore path as script
+// results. Scripts never see lorebook content (the lorebook enriches the
+// prompt after script processing, like Janitor's prompt assembly).
 
 import { eventSource, event_types } from '/scripts/events.js';
 import { setExtensionPrompt, extension_prompt_types } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
+import { loadWorldInfo } from '/scripts/world-info.js';
 import { buildContext, snapshotSeeds, fieldDiff } from './context.js';
 import { runScript } from './runner.js';
+import { runLorebookEngine } from './lorebook-engine.js';
 import {
-    getOptions, getAssignedScripts, getChatAssignedScripts, getScript, getSettings, setLastReport, CONTEXT_CHAR_FIELDS,
+    getOptions, getAssignedScripts, getChatAssignedScripts, getScript, getSettings, setLastReport,
+    getBridgedBookNames, CONTEXT_CHAR_FIELDS,
 } from './storage.js';
 
 // Restores that are still pending. ST serializes generations, so at most one
@@ -122,6 +130,7 @@ export async function JaiRunScripts(coreChat, _contextSize, _abort, type) {
         character: character.name,
         skipped: null,
         runs: [],
+        lorebook: [],
         injection: { mode: options.injectionMode, fields: [] },
     };
 
@@ -129,8 +138,10 @@ export async function JaiRunScripts(coreChat, _contextSize, _abort, type) {
     //    scripts) first, then this chat's overlay stack. A script attached to
     //    both scopes runs once, at its character-stack position.
     const scripts = buildRunList(character);
-    if (scripts.length === 0) {
-        report.skipped = 'No enabled scripts attached to this character or chat.';
+    // Bridged lorebooks ride the same generation (engine runs after scripts).
+    const bridgedBooks = getBridgedBookNames(character);
+    if (scripts.length === 0 && bridgedBooks.length === 0) {
+        report.skipped = 'No enabled scripts or bridged lorebooks attached to this character or chat.';
         finishReport(report);
         return;
     }
@@ -181,7 +192,14 @@ export async function JaiRunScripts(coreChat, _contextSize, _abort, type) {
         });
     }
 
-    // 3. Injection for this generation only.
+    // 3. Bridged lorebooks: run the Janitor engine AFTER the scripts — entry
+    //    content is added on top of the script results (scripts don't see it),
+    //    then everything is injected together below.
+    if (bridgedBooks.length > 0) {
+        await applyBridgedLorebooks(character, contextFacade, report);
+    }
+
+    // 4. Injection for this generation only.
     const { snapshots, ephemeralKeys } = applyInjection(character, contextFacade, seeds, report);
 
     finishReport(report);
@@ -246,6 +264,75 @@ function applyInjection(character, contextFacade, seeds, report) {
 }
 
 
+/**
+ * Runs the Janitor lorebook engine for every book attached to the character in
+ * Bridge mode and merges the activated entries into the context facade's
+ * character fields, at their Janitor placement. Faithful mode splices them
+ * into the prompt sections exactly; ephemeral mode lands them as extension
+ * prompts (fixed position — placement is approximate there).
+ *
+ * Errors are isolated: a failing book never breaks the generation.
+ */
+async function applyBridgedLorebooks(character, contextFacade, report) {
+    const bookNames = getBridgedBookNames(character);
+    const anchorBlocks = {
+        personalityBefore: [], personalityAfter: [],
+        scenarioBefore: [], scenarioAfter: [],
+        exampleBefore: [], exampleAfter: [],
+    };
+    let activatedTotal = 0;
+
+    for (const bookName of bookNames) {
+        try {
+            // Cache-first (worldInfoCache); only the first generation after a
+            // reload fetches the book from the server.
+            const data = await loadWorldInfo(bookName);
+            const bridgeData = data?.jaiBridge;
+            if (!bridgeData || !Array.isArray(bridgeData.entries) || bridgeData.entries.length === 0) {
+                report.lorebook.push({ book: bookName, entryName: '(book)', activated: false, reason: 'no bridge data in the book file — re-import it' });
+                continue;
+            }
+
+            const result = runLorebookEngine({
+                entries: bridgeData.entries,
+                messages: contextFacade.chat.last_messages,
+                messageCount: contextFacade.chat.message_count,
+                bookDepth: bridgeData.depth ?? getOptions().defaultDepth,
+            });
+            activatedTotal += result.activatedCount;
+            for (const decision of result.decisions) {
+                report.lorebook.push({ book: bookName, ...decision });
+            }
+            for (const [anchor, content] of Object.entries(result.blocks)) {
+                if (content) {
+                    anchorBlocks[anchor].push(content);
+                }
+            }
+        } catch (error) {
+            console.warn('[JaiBridge] Lorebook engine failed for', bookName, error);
+            report.lorebook.push({ book: bookName, entryName: '(book)', activated: false, reason: `engine error: ${error?.message ?? error}` });
+        }
+    }
+
+    const char = contextFacade.character;
+    if (anchorBlocks.personalityBefore.length > 0 || anchorBlocks.personalityAfter.length > 0) {
+        char.personality = [...anchorBlocks.personalityBefore, String(char.personality ?? ''), ...anchorBlocks.personalityAfter]
+            .filter(part => part.length > 0).join('\n');
+    }
+    if (anchorBlocks.scenarioBefore.length > 0 || anchorBlocks.scenarioAfter.length > 0) {
+        char.scenario = [...anchorBlocks.scenarioBefore, String(char.scenario ?? ''), ...anchorBlocks.scenarioAfter]
+            .filter(part => part.length > 0).join('\n');
+    }
+    if (anchorBlocks.exampleBefore.length > 0 || anchorBlocks.exampleAfter.length > 0) {
+        char.example_dialogs = [...anchorBlocks.exampleBefore, String(char.example_dialogs ?? ''), ...anchorBlocks.exampleAfter]
+            .filter(part => part.length > 0).join('\n');
+    }
+
+    if (activatedTotal > 0) {
+        console.debug(`[JaiBridge] Lorebook engine injected ${activatedTotal} entr${activatedTotal === 1 ? 'y' : 'ies'} for ${character.name}.`);
+    }
+}
+
 function finishReport(report) {
     if (getOptions().debugCapture) {
         setLastReport(report);
@@ -255,7 +342,8 @@ function finishReport(report) {
 
 /**
  * Dry-run helper for /jai-test: builds the facade from the live chat and runs
- * scripts WITHOUT injecting anything or touching the WI books.
+ * scripts AND the bridged-lorebook engine WITHOUT injecting anything or
+ * touching the WI books.
  *
  * @param {object} character ST character
  * @param {number|null} scriptId Specific script id, or null for all assigned
@@ -278,6 +366,7 @@ export async function testRunScripts(character, scriptId = null) {
     const scripts = scriptId !== null
         ? ([getScript(scriptId)].filter(Boolean).map(script => ({ ...script, scope: 'test' })))
         : buildRunList(character);
+    const bridgedBooks = getBridgedBookNames(character);
 
     const report = {
         timestamp: new Date().toISOString(),
@@ -285,11 +374,12 @@ export async function testRunScripts(character, scriptId = null) {
         character: character.name,
         skipped: null,
         runs: [],
+        lorebook: [],
         injection: { mode: 'none (test run)', fields: [] },
     };
 
-    if (scripts.length === 0) {
-        report.skipped = 'No (enabled) scripts to run.';
+    if (scripts.length === 0 && bridgedBooks.length === 0) {
+        report.skipped = 'No (enabled) scripts or bridged lorebooks to run.';
         finishReport(report);
         return report;
     }
@@ -328,6 +418,12 @@ export async function testRunScripts(character, scriptId = null) {
             logs: result?.logs ?? [],
             changes,
         });
+    }
+
+    // Dry-run the lorebook engine too — nothing is injected, but the report
+    // shows which entries WOULD activate for the current chat.
+    if (bridgedBooks.length > 0) {
+        await applyBridgedLorebooks(character, contextFacade, report);
     }
 
     finishReport(report);

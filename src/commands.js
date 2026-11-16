@@ -11,7 +11,7 @@ import { SlashCommand } from '/scripts/slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '/scripts/slash-commands/SlashCommandParser.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '/scripts/slash-commands/SlashCommandArgument.js';
 import { getContext } from '/scripts/st-context.js';
-import { getScripts, getScript, getScriptByTitle, toggleScript, assignScript, unassignScript, getAssignedScripts } from './storage.js';
+import { getScripts, getScript, getScriptByTitle, toggleScript, assignScript, unassignScript, getAssignedScripts, getLastReport } from './storage.js';
 import { testRunScripts } from './interceptor.js';
 import { showReportPopup } from './report.js';
 
@@ -49,7 +49,7 @@ export function registerSlashCommands() {
                     lines.push('  (none assigned)');
                 }
                 assigned.forEach((script, index) => {
-                    lines.push(`  ${index + 1}. ${script.title} `);
+                    lines.push(`  ${index + 1}. ${script.title}`);
                 });
             }
             return lines.join('\n');
@@ -144,7 +144,6 @@ export function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'jai-debug',
         callback: async () => {
-            const { getLastReport } = await import('./storage.js');
             const report = getLastReport();
             if (!report) {
                 return 'No generation has run yet with debug capture enabled.';

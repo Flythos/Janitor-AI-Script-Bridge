@@ -2,7 +2,7 @@
 //
 // Renders the per-generation report (Janitor's "Changes" tab equivalent) into
 // a popup: per-script console output, character field diffs, errors, and the
-// World Info gating decisions.
+// lorebook engine decisions for books attached in Bridge mode.
 
 import { callGenericPopup, POPUP_TYPE } from '/scripts/popup.js';
 import { escapeHtml } from '/scripts/utils.js';
@@ -18,11 +18,19 @@ export function renderReportHtml(report) {
         parts.push(`<div class="jai-empty">${escapeHtml(report.skipped)}</div>`);
     }
 
-    if (Array.isArray(report.gating) && report.gating.length > 0) {
-        const rows = report.gating
-            .map(item => `<li>${escapeHtml(item.book)} · uid ${escapeHtml(String(item.uid))} · ${escapeHtml(item.comment ?? '')} — ${escapeHtml(item.reason ?? '')}</li>`)
+    if (Array.isArray(report.lorebook) && report.lorebook.length > 0) {
+        const rows = report.lorebook
+            .map(item => {
+                const marker = item.activated
+                    ? '<span class="jai-ok">✓</span>'
+                    : '<span class="jai-book-skip">·</span>';
+                const anchor = item.placement
+                    ? ` <span class="jai-book-anchor">[${escapeHtml(String(item.placement))}${item.position ? ` ${escapeHtml(String(item.position))}` : ''}]</span>`
+                    : '';
+                return `<li>${marker} ${escapeHtml(item.book ?? '')} · <b>${escapeHtml(item.entryName ?? '')}</b>${anchor} — ${escapeHtml(item.reason ?? '')}</li>`;
+            })
             .join('');
-        parts.push(`<div class="jai-gating-summary"><b>World Info gating:</b><ul>${rows}</ul></div>`);
+        parts.push(`<div class="jai-lorebook-summary"><b>Lorebook engine:</b><ul>${rows}</ul></div>`);
     }
 
     for (const run of report.runs ?? []) {

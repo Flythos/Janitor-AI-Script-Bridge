@@ -2,13 +2,20 @@
 //
 // Global state lives in extension_settings.jaiBridge:
 //   scripts        — library of Advanced (JS) scripts
-//   bookProvenance — per-converted-lorebook metadata (original Janitor entries + gating info)
+//   bookProvenance — per-lorebook import metadata (small: title/count/depth —
+//                    the original Janitor JSON lives inside the book file itself)
 //   options        — user preferences
-//   lastReport     — debug report of the last generation
+//
+// The last-generation debug report is intentionally NOT persisted: it contains
+// chat-derived content (script logs, character diffs) and settings.json is a
+// file users share/sync — it lives in a module variable for the session only.
 //
 // Per-character script assignment is stored on the character card itself
 // (data.extensions.jaiBridge.assignedScriptIds) via writeExtensionField so it
 // survives card export/import — mirroring how Janitor attaches scripts to bots.
+// Bridged lorebooks are tracked the same way
+// (data.extensions.jaiBridgeBooks = [book names]) and enforced at generation
+// time by the lorebook engine.
 // Per-chat script assignment lives in the chat's metadata
 // (chat_metadata.jaiBridge.assignedScriptIds) — the same slot Author's Note
 // uses for chat-scoped data, so it follows the chat through checkpoints.
@@ -24,6 +31,9 @@ import { CONTEXT_CHAR_FIELDS } from './context.js';
 export { CONTEXT_CHAR_FIELDS };
 
 const SETTINGS_KEY = 'jaiBridge';
+
+// Character-card extension field holding the bridged lorebook book names.
+export const BRIDGE_BOOKS_FIELD = 'jaiBridgeBooks';
 
 const DEFAULT_OPTIONS = {
     // 'faithful' — temporarily write script results into the in-memory character
@@ -50,7 +60,6 @@ export function getSettings() {
             scripts: [],
             bookProvenance: {},
             options: {},
-            lastReport: null,
         };
     }
 
@@ -58,11 +67,18 @@ export function getSettings() {
     if (!Array.isArray(settings.scripts)) {
         settings.scripts = [];
     }
+    // Self-heal corrupt entries (null / non-object) — one bad item used to
+    // crash both the UI init and the interceptor loop.
+    settings.scripts = settings.scripts.filter(script => script !== null && typeof script === 'object');
     if (typeof settings.bookProvenance !== 'object' || settings.bookProvenance === null) {
         settings.bookProvenance = {};
     }
     if (typeof settings.options !== 'object' || settings.options === null) {
         settings.options = {};
+    }
+    // v0.3.0: the debug report is session-only now — drop any persisted copy.
+    if ('lastReport' in settings) {
+        delete settings.lastReport;
     }
     for (const [key, value] of Object.entries(DEFAULT_OPTIONS)) {
         if (settings.options[key] === undefined) {
@@ -288,13 +304,66 @@ export function getBookProvenanceNames() {
     return Object.keys(getSettings().bookProvenance);
 }
 
-// --- Debug report of the last generation ---
+/**
+ * Drops a legacy `original` copy from the settings provenance once the book
+ * file itself carries the entries (v0.3.0 keeps big JSON out of settings.json).
+ */
+export function stripProvenanceOriginal(bookName) {
+    const provenance = getSettings().bookProvenance[bookName];
+    if (provenance && provenance.original !== undefined) {
+        delete provenance.original;
+        saveSettingsDebounced();
+    }
+}
+
+// --- Bridged lorebooks (per-character book list) ---
+
+/**
+ * Bridged lorebook names attached to a character (Janitor attaches lorebooks
+ * to bots). Bridged books are enforced by the lorebook engine at generation
+ * time; the World Info copies stay unlinked and view-only.
+ */
+export function getBridgedBookNames(character) {
+    const names = character?.data?.extensions?.[BRIDGE_BOOKS_FIELD];
+    if (!Array.isArray(names)) {
+        return [];
+    }
+    return names.filter(name => typeof name === 'string' && name.length > 0);
+}
+
+export async function addBridgedBook(chid, bookName) {
+    const context = getContext();
+    const character = context.characters[chid];
+    if (!character) {
+        return;
+    }
+    const names = getBridgedBookNames(character);
+    if (!names.includes(bookName)) {
+        names.push(bookName);
+    }
+    await writeExtensionField(chid, BRIDGE_BOOKS_FIELD, names);
+}
+
+export async function removeBridgedBook(chid, bookName) {
+    const context = getContext();
+    const character = context.characters[chid];
+    if (!character) {
+        return;
+    }
+    const names = getBridgedBookNames(character);
+    if (names.includes(bookName)) {
+        await writeExtensionField(chid, BRIDGE_BOOKS_FIELD, names.filter(name => name !== bookName));
+    }
+}
+
+// --- Debug report of the last generation (session-only, never persisted) ---
+
+let lastReport = null;
 
 export function getLastReport() {
-    return getSettings().lastReport;
+    return lastReport;
 }
 
 export function setLastReport(report) {
-    getSettings().lastReport = report;
-    saveSettingsDebounced();
+    lastReport = report;
 }

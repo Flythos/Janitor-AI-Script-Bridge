@@ -253,7 +253,7 @@ export function normalizeJanitorEntry(raw) {
  */
 export function looksLikeLorebook(parsed) {
     if (Array.isArray(parsed)) {
-        return parsed.some(item => typeof item === 'object' && item !== null && (item.content !== undefined || item.key !== undefined || item.text !== undefined));
+        return parsed.some(item => typeof item === 'object' && item !== null && (item.content !== undefined || item.key !== undefined || item.text !== undefined || item.value !== undefined));
     }
     if (typeof parsed === 'object' && parsed !== null) {
         if (Array.isArray(parsed.entries)) {
@@ -282,17 +282,33 @@ export function extractLorebookEntries(parsed) {
     return null;
 }
 
+// ST's regex-key flag whitelist (world-info.js parseRegexFromString accepts
+// exactly these); anything else makes ST treat the whole key as literal text.
+const ST_REGEX_FLAGS = 'gimsuy';
+
 /**
  * Compiles a Janitor regex key ("/pattern/flags" or bare "pattern") honoring
- * the entry's case sensitivity. Returns null for invalid patterns.
+ * the entry's case sensitivity. Flags outside ST's whitelist ([gimsuy]) are
+ * dropped (and reported via the optional `details` object) — ST would silently
+ * treat such a key as literal text, so the converter warns instead.
+ * Returns null for invalid patterns.
+ *
+ * @param {string} regexKey
+ * @param {boolean} caseSensitive
+ * @param {object} [details] Optional sink — receives {droppedFlags: string}
+ * @returns {RegExp|null}
  */
-export function compileRegexKey(regexKey, caseSensitive) {
+export function compileRegexKey(regexKey, caseSensitive, details = null) {
     let pattern = String(regexKey).trim();
     let flags = caseSensitive ? '' : 'i';
     const match = pattern.match(/^\/(.*?)\/([a-z]*)$/);
     if (match) {
         pattern = match[1];
-        flags = (match[2] || (caseSensitive ? '' : 'i')).replace(/[^dgimsuvy]/g, '');
+        const requested = match[2] || (caseSensitive ? '' : 'i');
+        flags = requested.replace(new RegExp(`[^${ST_REGEX_FLAGS}]`, 'g'), '');
+        if (details && flags.length !== requested.length) {
+            details.droppedFlags = requested.split('').filter(flag => !ST_REGEX_FLAGS.includes(flag)).join('');
+        }
         if (!flags.includes('i') && !caseSensitive) {
             flags += 'i';
         }
@@ -302,4 +318,50 @@ export function compileRegexKey(regexKey, caseSensitive) {
     } catch {
         return null;
     }
+}
+
+// ST world_info_position values (verified in SillyTavern 1.19.0, world-info.js:855):
+// before: 0, after: 1, ANTop: 2, ANBottom: 3, atDepth: 4, EMTop: 5, EMBottom: 6.
+export const WI_POSITION = { BEFORE: 0, AFTER: 1, EM_TOP: 5, EM_BOTTOM: 6 };
+
+/**
+ * Maps a Janitor Placement × Position to an ST world_info_position number.
+ * Janitor's Default = "after personality". ST cannot express "between
+ * description and scenario", so Scenario and Default both land at "after".
+ *
+ * @param {string|null} placement 'default' | 'personality' | 'scenario' | 'example' | null
+ * @param {string|null} position  'before' | 'after' | null (null = Janitor editor default After)
+ * @returns {number} ST world_info_position value
+ */
+export function placementToWIPosition(placement, position) {
+    switch (placement) {
+        case 'personality':
+            return position === 'before' ? WI_POSITION.BEFORE : WI_POSITION.AFTER;
+        case 'example':
+            return position === 'before' ? WI_POSITION.EM_TOP : WI_POSITION.EM_BOTTOM;
+        case 'scenario':
+        case 'default':
+        default:
+            return WI_POSITION.AFTER;
+    }
+}
+
+/**
+ * Prepares Janitor inclusion-group labels for ST's `group` field. ST splits
+ * the field on commas, so a label containing a comma would silently become
+ * multiple groups — commas are replaced with semicolons and reported.
+ *
+ * @param {string[]} labels
+ * @returns {{joined: string, changed: boolean}}
+ */
+export function sanitizeGroupLabelsForST(labels) {
+    let changed = false;
+    const safe = (labels ?? []).map(label => {
+        if (label.includes(',')) {
+            changed = true;
+            return label.replace(/,/g, ';');
+        }
+        return label;
+    });
+    return { joined: safe.join(', '), changed };
 }

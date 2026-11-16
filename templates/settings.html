@@ -40,11 +40,14 @@
                 </div>
             </div>
 
-            <!-- Converted lorebooks -->
+            <!-- Imported lorebooks -->
             <div class="jai-section">
                 <div class="jai-section-title"><i class="fa-solid fa-book"></i> Imported Janitor lorebooks</div>
-                <div class="jai-hint">Imported lorebook JSON becomes a regular World Info book linked to the character at import time.
-                    Min-Messages and Group-Selection rules are enforced by this plugin per generation.</div>
+                <div class="jai-hint">Imported lorebook JSON becomes a World Info book. At import you choose how it attaches:
+                    <b>Native</b> — a plain ST book, activated by ST's own WI scan (no Min Messages, keyword-score group picks);
+                    <b>Bridge</b> — the plugin runs Janitor's lorebook engine every generation (Min Messages, weighted group
+                    picks, whole-word/case key rules, probability, Janitor placement) and injects matching entries itself;
+                    the ST copy stays view-only. The <i class="fa-solid fa-right-left"></i> button switches a book's mode.</div>
                 <div id="jai_book_list" class="jai-book-list"></div>
             </div>
 
@@ -81,7 +84,7 @@
             <!-- Debug -->
             <div class="jai-section" id="jai_debug_section">
                 <div class="jai-section-title"><i class="fa-solid fa-bug"></i> Debug</div>
-                <div class="jai-hint">Shows the report of the last generation: per-script output, changes, errors, lorebook gating.</div>
+                <div class="jai-hint">Shows the report of the last generation: per-script output, changes, errors, and the lorebook engine's per-entry decisions.</div>
                 <button id="jai_debug_view" class="menu_button"><i class="fa-solid fa-eye"></i> Last generation report</button>
             </div>
         </div>

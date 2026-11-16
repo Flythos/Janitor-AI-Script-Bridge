@@ -2,7 +2,11 @@
 //
 // Routes incoming script content to the right handler:
 //   - plain JS code / .js file            → Advanced script (library)
-//   - lorebook JSON (array / {entries} / {script}) → converted ST World Info book
+//   - lorebook JSON (array / {entries} / {script}) → converted ST World Info
+//     book; with a character selected, a popup asks how to attach it:
+//     Native (plain ST book, ST's WI engine runs it) or Bridge (the plugin's
+//     Janitor lorebook engine enforces Min Messages / weighted group picks /
+//     key scan at generation time; the ST copy stays view-only)
 //   - Janitor script export {title, script, settings} → routed by content
 //   - bundle {scripts: [{title, script, settings}, ...]} → every item routed
 //
@@ -11,8 +15,9 @@
 // comes from the user's copy.
 
 import { getContext } from '/scripts/st-context.js';
-import { convertJanitorLorebook, looksLikeLorebook, extractLorebookEntries } from './lorebook.js';
-import { addScript } from './storage.js';
+import { callGenericPopup, POPUP_TYPE, POPUP_RESULT } from '/scripts/popup.js';
+import { convertJanitorLorebook, attachBookToCharacter, looksLikeLorebook, extractLorebookEntries } from './lorebook.js';
+import { addScript, addBridgedBook } from './storage.js';
 
 const MAX_PASTE_LENGTH = 1024 * 1024;
 
@@ -139,17 +144,46 @@ async function importLorebook(entries, title, scriptSettings, warnings) {
     const context = getContext();
     const chid = context.characterId !== undefined ? context.characterId : null;
     if (chid === null) {
-        warnings.push('No character selected — the lorebook was created as a standalone book (attach it in World Info).');
+        warnings.push('No character selected — the lorebook was created as a standalone book (attach it via the book list below).');
     }
     try {
-        const { bookName, warnings: convertWarnings } = await convertJanitorLorebook(entries, title, chid, scriptSettings);
+        const { bookName, entryCount, warnings: convertWarnings } = await convertJanitorLorebook(entries, title, scriptSettings);
         warnings.push(...convertWarnings);
+
+        if (chid !== null) {
+            const bridged = await askLorebookMode(bookName, entryCount, context.characters[chid]?.name ?? '');
+            if (bridged) {
+                await addBridgedBook(chid, bookName);
+            } else {
+                const attached = await attachBookToCharacter(chid, bookName);
+                if (!attached) {
+                    warnings.push(`Kept the existing primary lorebook — "${bookName}" was imported but is not linked (attach it via the book list).`);
+                }
+            }
+        }
         return bookName;
     } catch (error) {
         console.error('[JaiBridge] Lorebook conversion failed', error);
         warnings.push(`Lorebook conversion failed: ${error?.message ?? error}`);
         return null;
     }
+}
+
+/**
+ * Asks how the freshly imported lorebook should be attached: OK = Bridge mode
+ * (Janitor engine at runtime), Cancel = Native (plain ST book). Cancel/ESC
+ * defaults to Native — the pre-v0.3.0 behavior.
+ */
+async function askLorebookMode(bookName, entryCount, characterName) {
+    const result = await callGenericPopup(
+        `Lorebook "<b>${bookName}</b>" imported (${entryCount} entries). How should it be attached to <b>${characterName}</b>?<br><br>` +
+        '<b>Bridge mode</b> (OK) — the plugin runs Janitor\'s lorebook engine every generation: Min Messages, weighted group picks (one entry per inclusion group), key scan with whole-word/case rules and probability, entries injected at their Janitor placement. The World Info copy stays view-only.<br>' +
+        '<b>Native</b> (Cancel) — a plain ST World Info book linked to the character; ST\'s own WI scan activates it (no Min Messages, keyword-score group picking).',
+        POPUP_TYPE.CONFIRM,
+        '',
+        { okButton: 'Bridge mode (Janitor engine)', cancelButton: 'Native (plain ST book)' },
+    );
+    return result === POPUP_RESULT.AFFIRMATIVE;
 }
 
 function importAdvanced(code, title, depth, description) {

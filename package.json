@@ -1,0 +1,11 @@
+{
+    "name": "janitor-ai-script-bridge",
+    "version": "0.3.0",
+    "private": true,
+    "type": "module",
+    "description": "Runs Janitor AI bot scripts (JS + lorebooks) inside SillyTavern. Dev tooling only — the extension itself has no build step.",
+    "scripts": {
+        "test": "node tests/smoke.mjs",
+        "audit": "node tools/audit.mjs"
+    }
+}

@@ -1,46 +1,56 @@
 // Janitor AI Script Bridge — Janitor lorebook ⇄ SillyTavern World Info
 //
-// Janitor "Lorebook"-type scripts are JSON arrays of entries. On import they are
-// converted 1:1 into a native SillyTavern World Info book that is linked to the
-// active character (data.extensions.world), so the entries take part in the
-// regular WI scan every generation.
+// Janitor "Lorebook"-type scripts are JSON arrays of entries. On import they
+// become a native SillyTavern World Info book `JAI: <title>` that carries the
+// full original data inside the book file itself (data.jaiBridge), and the
+// user picks how it is attached to the character:
 //
-// Field mapping (Janitor → ST):
-//   Keys            → key
-//   Regex keys      → key (as /pattern/flags strings; ST parses them natively)
-//   Secondary keys  → keysecondary (+ selective = true)
-//   Secondary logic → selectiveLogic (AND ANY/AND ALL/NOT ANY/NOT ALL map 1:1)
-//   Content         → content
-//   Entry Name      → comment
-//   Category        → comment prefix ("Category / Name")
-//   Probability     → probability (+ useProbability = true)
-//   Order           → order
-//   Group Label(s)  → group (comma separated)
-//   Group Weight    → groupWeight
-//   Case Sensitive  → caseSensitive
-//   Match Whole Word→ matchWholeWords
-//   Active          → disable (inverted)
-//   Constant        → constant
-//   Depth           → scanDepth (per-entry scan depth override; falls back to
-//                     the lorebook script's Depth setting)
+//   **Native mode** — the book is linked as the character's primary lorebook
+//   (data.extensions.world) and ST's own WI engine handles everything. Field
+//   mapping (Janitor → ST):
+//     Keys            → key
+//     Regex keys      → key (as /pattern/flags strings; ST parses them natively)
+//     Secondary keys  → keysecondary (+ selective = true)
+//     Secondary logic → selectiveLogic (AND ANY/AND ALL/NOT ANY/NOT ALL map 1:1)
+//     Content         → content
+//     Entry Name      → comment
+//     Category        → comment prefix ("Category / Name")
+//     Probability     → probability (+ useProbability = true)
+//     Order           → order
+//     Group Label(s)  → group (commas inside labels replaced with ';')
+//     Group Weight    → groupWeight (clamped to ST's editor max 10000)
+//     "Use insertion order instead of weight" (prioritizeInclusion) → groupOverride
+//     Case Sensitive  → caseSensitive
+//     Match Whole Word→ matchWholeWords
+//     Active          → disable (inverted)
+//     Constant        → constant
+//     Depth           → scanDepth (per-entry scan depth override)
+//     Placement × Pos → world_info_position (Default = after personality)
 //
-// Conversion is import-time only: the result is a plain native ST World Info
-// book with no plugin runtime involvement. The original Janitor JSON is kept
-// as provenance so imports stay re-exportable. Janitor behaviors with no
-// ST-native equivalent (Min Messages gating, weighted group rolls, per-entry
-// activation scripts) are intentionally NOT emulated — strict bridging only.
+//   **Bridge mode** — the book is NOT linked; the character gets the book name
+//   in data.extensions.jaiBridgeBooks and the lorebook engine
+//   (src/lorebook-engine.js) re-implements Janitor's activation rules at
+//   generation time (Min Messages, weighted group picks, key scan, probability,
+//   placement) and injects matching entries itself. The ST copy is view-only.
+//
+// The original Janitor entry JSON is stored inside the book file
+// (data.jaiBridge.entries) for both modes — settings.json only keeps small
+// provenance metadata.
 
-import { createNewWorldInfo, createWorldInfoEntry, loadWorldInfo, saveWorldInfo, world_info_position, world_names } from '/scripts/world-info.js';
+import { createNewWorldInfo, createWorldInfoEntry, loadWorldInfo, saveWorldInfo, world_names } from '/scripts/world-info.js';
 import { writeExtensionField } from '/scripts/extensions.js';
 import { getContext } from '/scripts/st-context.js';
 import { download } from '/scripts/utils.js';
+import { callGenericPopup, POPUP_TYPE, POPUP_RESULT } from '/scripts/popup.js';
 import {
     normalizeJanitorEntry,
     looksLikeLorebook,
     extractLorebookEntries,
     compileRegexKey,
+    placementToWIPosition,
+    sanitizeGroupLabelsForST,
 } from './janitor-format.js';
-import { getBookProvenance, setBookProvenance, deleteBookProvenance, getOptions } from './storage.js';
+import { getBookProvenance, setBookProvenance, deleteBookProvenance, getOptions, addBridgedBook, removeBridgedBook, stripProvenanceOriginal } from './storage.js';
 
 // `toastr` is a page-level global provided by SillyTavern.
 const toastr = globalThis.toastr;
@@ -64,16 +74,17 @@ function uniqueBookName(base) {
 }
 
 /**
- * Converts a Janitor lorebook entry array into a native ST World Info book and
- * links it to the given character (Janitor attaches lorebook scripts to bots).
+ * Converts a Janitor lorebook entry array into a native ST World Info book.
+ * The book file itself carries the bridge payload (data.jaiBridge: original
+ * entries + depth) and is NOT linked to any character here — the caller picks
+ * the attach mode (native link vs bridge list) and calls the matching helper.
  *
  * @param {object[]} rawEntries Parsed Janitor lorebook JSON (array of entries)
  * @param {string} title        Script/book title
- * @param {number|null} chid    Character index to attach the book to
  * @param {object} [scriptSettings] Original script settings ({depth} when known)
  * @returns {Promise<{bookName: string, entryCount: number, warnings: string[]}>}
  */
-export async function convertJanitorLorebook(rawEntries, title, chid, scriptSettings = null) {
+export async function convertJanitorLorebook(rawEntries, title, scriptSettings = null) {
     const warnings = [];
     const bookName = uniqueBookName(`JAI: ${title}`);
 
@@ -88,10 +99,12 @@ export async function convertJanitorLorebook(rawEntries, title, chid, scriptSett
     }
 
     let entryCount = 0;
+    let skippedCount = 0;
 
     for (const raw of rawEntries) {
         const record = normalizeJanitorEntry(raw);
         if (!record) {
+            skippedCount++;
             continue;
         }
 
@@ -102,10 +115,16 @@ export async function convertJanitorLorebook(rawEntries, title, chid, scriptSett
         }
 
         // Keys: plain keys plus regex keys in ST's "/pattern/flags" notation.
+        // ST only accepts the [gimsuy] flag set — flags outside it are dropped
+        // (with a warning), otherwise ST would treat the key as literal text.
         const keyList = [...record.keys];
         for (const regexKey of record.regexKeys) {
-            if (compileRegexKey(regexKey, record.caseSensitive)) {
+            const details = {};
+            if (compileRegexKey(regexKey, record.caseSensitive, details)) {
                 keyList.push(regexKey.startsWith('/') ? regexKey : `/${regexKey}/`);
+                if (details.droppedFlags) {
+                    warnings.push(`Regex key "${regexKey}" in entry "${record.entryName}" uses flag(s) "${details.droppedFlags}" that ST does not support — they were dropped.`);
+                }
             } else {
                 warnings.push(`Invalid regex key "${regexKey}" in entry "${record.entryName}" was skipped.`);
             }
@@ -125,8 +144,17 @@ export async function convertJanitorLorebook(rawEntries, title, chid, scriptSett
         entry.constant = record.constant;
         entry.disable = !record.active;
         if (record.groupLabels.length > 0) {
-            entry.group = record.groupLabels.join(', ');
-            entry.groupWeight = Math.min(100000, Math.max(1, Math.round(record.groupWeight || 100)));
+            // ST splits the group field on commas — keep labels intact.
+            const labels = sanitizeGroupLabelsForST(record.groupLabels);
+            if (labels.changed) {
+                warnings.push(`Group label(s) of entry "${record.entryName}" contained commas (ST splits groups on commas) — commas were replaced with ';'.`);
+            }
+            entry.group = labels.joined;
+            entry.groupWeight = Math.min(10000, Math.max(1, Math.round(record.groupWeight || 100)));
+            // "Use insertion order instead of weight" → ST's Inclusion Priority.
+            if (record.groupMode === 'byOrder') {
+                entry.groupOverride = true;
+            }
         }
         // Janitor defaults: Match Whole Word ON, Case Sensitive OFF (verified in
         // a real 90-entry export). Map both explicitly — never rely on ST's
@@ -142,75 +170,151 @@ export async function convertJanitorLorebook(rawEntries, title, chid, scriptSett
         // personality) → ST world_info_position. ST cannot express every slot:
         // personality/scenario land relative to the whole char block,
         // example-message placement maps exactly.
-        switch (record.placement) {
-            case 'personality':
-                entry.position = record.position === 'before'
-                    ? world_info_position.before
-                    : world_info_position.after;
-                break;
-            case 'example':
-                entry.position = record.position === 'before'
-                    ? world_info_position.EMTop
-                    : world_info_position.EMBottom;
-                break;
-            case 'scenario':
-            case 'default':
-            default:
-                entry.position = world_info_position.after;
-                break;
-        }
-
-
+        entry.position = placementToWIPosition(record.placement, record.position);
 
         entryCount++;
     }
 
+    if (skippedCount > 0) {
+        warnings.push(`${skippedCount} entr${skippedCount === 1 ? 'y was' : 'ies were'} skipped (no content and no keys).`);
+    }
+
+    // The book file carries the full bridge payload: original entries for the
+    // lorebook engine (bridge mode) and for re-export. ST serializes the data
+    // object as-is, so the custom key survives.
+    const depth = scriptSettings?.depth !== undefined
+        ? Math.max(1, Math.min(10, Math.round(Number(scriptSettings.depth) || 3)))
+        : getOptions().defaultDepth;
+    data.jaiBridge = {
+        title: String(title),
+        importedAt: Date.now(),
+        entryCount,
+        depth,
+        entries: Array.isArray(rawEntries) ? rawEntries : [],
+    };
+
     await saveWorldInfo(bookName, data, true);
 
+    // Small metadata only — the big JSON lives in the book file now.
     setBookProvenance(bookName, {
         source: 'janitor-lorebook',
         title: String(title),
         importedAt: Date.now(),
         entryCount,
-        settings: {
-            depth: scriptSettings?.depth !== undefined ? Math.max(1, Math.min(10, Math.round(Number(scriptSettings.depth) || 3))) : getOptions().defaultDepth,
-        },
-        original: rawEntries,
+        settings: { depth },
     });
-
-    if (chid !== null && chid !== undefined && chid !== -1) {
-        await attachBookToCharacter(chid, bookName);
-    }
 
     return { bookName, entryCount, warnings };
 }
 
-export async function attachBookToCharacter(chid, bookName) {
-    await writeExtensionField(chid, 'world', bookName);
+/**
+ * Links a book as the character's primary lorebook (native mode). Asks for
+ * confirmation before replacing an existing link — the old book itself is
+ * kept, only the link changes.
+ *
+ * @returns {boolean} false when the user cancelled the overwrite
+ */
+export async function attachBookToCharacter(chid, bookName, { confirmOverwrite = true } = {}) {
     const context = getContext();
+    const character = context.characters[chid];
+    const existing = character?.data?.extensions?.world;
+    if (existing && existing !== bookName && confirmOverwrite) {
+        const result = await callGenericPopup(
+            `"${escapeHtmlText(existing)}" is currently the primary lorebook. Replace the link with "${escapeHtmlText(bookName)}"? (The old book itself is kept.)`,
+            POPUP_TYPE.CONFIRM,
+        );
+        if (result !== POPUP_RESULT.AFFIRMATIVE) {
+            return false;
+        }
+    }
+    await writeExtensionField(chid, 'world', bookName);
     if (Number(context.characterId) === Number(chid)) {
         const select = document.getElementById('character_world');
         if (select) {
             select.value = bookName;
         }
     }
+    return true;
+}
+
+/**
+ * Removes the primary-lorebook link when it points at the given book.
+ */
+async function unlinkBookFromCharacter(chid, bookName) {
+    const context = getContext();
+    const character = context.characters[chid];
+    if (character?.data?.extensions?.world !== bookName) {
+        return;
+    }
+    await writeExtensionField(chid, 'world', '');
+    if (Number(context.characterId) === Number(chid)) {
+        const select = document.getElementById('character_world');
+        if (select) {
+            select.value = '';
+        }
+    }
+}
+
+/**
+ * Switches a book's attach mode for a character.
+ *
+ * @param {number} chid
+ * @param {string} bookName
+ * @param {boolean} bridged true = Bridge mode (Janitor engine), false = Native
+ * @returns {Promise<boolean>} false when the user cancelled (native overwrite)
+ */
+export async function setBookBridgeMode(chid, bookName, bridged) {
+    if (bridged) {
+        // Bridge books are enforced by the engine — they must not also be
+        // linked, or ST would activate the same entries twice.
+        await unlinkBookFromCharacter(chid, bookName);
+        await addBridgedBook(chid, bookName);
+        return true;
+    }
+    await removeBridgedBook(chid, bookName);
+    return await attachBookToCharacter(chid, bookName);
 }
 
 export async function deleteConvertedBook(bookName) {
     deleteBookProvenance(bookName);
 }
 
-export function exportBookOriginal(bookName) {
+/**
+ * Re-exports the original Janitor JSON. v0.3.0 books carry it inside the book
+ * file (data.jaiBridge.entries); legacy imports fall back to the settings
+ * provenance copy.
+ */
+export async function exportBookOriginal(bookName) {
+    let original = null;
+    try {
+        const data = await loadWorldInfo(bookName);
+        if (Array.isArray(data?.jaiBridge?.entries) && data.jaiBridge.entries.length > 0) {
+            original = data.jaiBridge.entries;
+        }
+    } catch {
+        /* fall through to the legacy provenance copy */
+    }
+
     const provenance = getBookProvenance(bookName);
-    if (!provenance?.original) {
+    if (!original && Array.isArray(provenance?.original)) {
+        original = provenance.original;
+        // The book file is authoritative now — drop the settings.json copy.
+        stripProvenanceOriginal(bookName);
+    }
+
+    if (!original) {
         toastr.warning(`No original Janitor JSON stored for "${bookName}".`, 'Janitor AI Script Bridge');
         return;
     }
     const payload = {
-        title: provenance.title,
+        title: provenance?.title ?? bookName,
         type: 'lorebook',
-        script: provenance.original,
-        settings: provenance.settings,
+        script: original,
+        settings: provenance?.settings,
     };
     download(JSON.stringify(payload, null, 4), `${bookName.replace(/[\\<>:"/|?*]/g, '_')}.json`, 'application/json');
+}
+
+function escapeHtmlText(text) {
+    return String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 }

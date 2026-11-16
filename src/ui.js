@@ -17,8 +17,9 @@ import {
     getAssignment, getAssignedScripts, assignScript, unassignScript, setAssignment,
     getBookProvenanceNames, getBookProvenance,
     getOptions, setOption, getLastReport,
+    getBridgedBookNames, removeBridgedBook,
 } from './storage.js';
-import { deleteConvertedBook, exportBookOriginal } from './lorebook.js';
+import { deleteConvertedBook, exportBookOriginal, setBookBridgeMode } from './lorebook.js';
 import { detectAndImport, importFile } from './importer.js';
 import { showReportPopup } from './report.js';
 
@@ -75,9 +76,15 @@ function refreshAllSections(panel) {
 // --- Library ---
 
 function wireLibrarySection(panel) {
-    panel.find('#jai_new_script').on('click', () => openScriptEditor(null));
+    panel.find('#jai_new_script').on('click', () => openScriptEditor(null).catch(error => {
+        console.warn('[JaiBridge] Script editor failed', error);
+        toastr.error(`Editor failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+    }));
     panel.on('click', '.jai-edit-script', function () {
-        openScriptEditor(String($(this).closest('.jai-script-item').data('id')));
+        openScriptEditor(String($(this).closest('.jai-script-item').data('id'))).catch(error => {
+            console.warn('[JaiBridge] Script editor failed', error);
+            toastr.error(`Editor failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+        });
     });
     panel.on('click', '.jai-delete-script', async function () {
         const id = String($(this).closest('.jai-script-item').data('id'));
@@ -237,7 +244,11 @@ function wireImportSection(panel) {
         const text = String(dialog.find('#jai_import_paste_area').val() ?? '');
         const title = String(dialog.find('#jai_import_title').val() ?? '');
         const log = { warnings: [], books: [], scripts: 0 };
-        await detectAndImport(text, title, log);
+        try {
+            await detectAndImport(text, title, log);
+        } catch (error) {
+            log.warnings.push(`Import failed: ${error?.message ?? error}`);
+        }
         reportImportResult(log);
         refreshAllSections(panel);
     });
@@ -263,7 +274,17 @@ export function reportImportResult(log) {
 
 // --- Assignment (per character, ordered; supports group member picking) ---
 
+// Shared with the floating Scripts panel so both UIs always edit the same
+// group member's stacks.
 let selectedGroupMemberChid = null;
+
+export function getSelectedGroupMemberChid() {
+    return selectedGroupMemberChid;
+}
+
+export function setSelectedGroupMemberChid(chid) {
+    selectedGroupMemberChid = chid;
+}
 
 /**
  * Resolves which character the assignment section edits: the selected character
@@ -299,7 +320,12 @@ function wireAssignmentSection(panel) {
         if (!scriptId) {
             return;
         }
-        await assignScript(target.chid, scriptId);
+        try {
+            await assignScript(target.chid, scriptId);
+        } catch (error) {
+            console.warn('[JaiBridge] Failed to assign script', error);
+            toastr.error(`Assignment failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+        }
         refreshAssignmentSection(panel);
     });
 
@@ -310,7 +336,12 @@ function wireAssignmentSection(panel) {
             return;
         }
         const id = String($(this).closest('.jai-assign-item').data('id'));
-        await unassignScript(target.chid, id);
+        try {
+            await unassignScript(target.chid, id);
+        } catch (error) {
+            console.warn('[JaiBridge] Failed to unassign script', error);
+            toastr.error(`Unassign failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+        }
         refreshAssignmentSection(panel);
     });
 
@@ -325,7 +356,12 @@ function wireAssignmentSection(panel) {
             const ids = panel.find('#jai_assign_list .jai-assign-item')
                 .map((_, element) => String($(element).data('id')))
                 .get();
-            await setAssignment(target.chid, ids);
+            try {
+                await setAssignment(target.chid, ids);
+            } catch (error) {
+                console.warn('[JaiBridge] Failed to save stack order', error);
+                toastr.error(`Saving the order failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+            }
             refreshAssignmentSection(panel);
         },
     });
@@ -400,19 +436,53 @@ function refreshAssignmentSection(panel) {
     }
 }
 
-// --- Converted lorebooks ---
+// --- Imported lorebooks (Native / Bridge mode) ---
 
 function wireBooksSection(panel) {
-    panel.on('click', '.jai-export-book', function () {
-        exportBookOriginal(String($(this).closest('.jai-book-item').data('name')));
+    panel.on('click', '.jai-export-book', async function () {
+        try {
+            await exportBookOriginal(String($(this).closest('.jai-book-item').data('name')));
+        } catch (error) {
+            console.warn('[JaiBridge] Book export failed', error);
+            toastr.error(`Export failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+        }
+    });
+    panel.on('click', '.jai-toggle-book-mode', async function () {
+        const bookName = String($(this).closest('.jai-book-item').data('name'));
+        const context = getContext();
+        const target = getAssignmentTarget(context);
+        if (!target) {
+            toastr.warning('Select a character (or a group member) first.', 'Janitor AI Script Bridge');
+            return;
+        }
+        const currentlyBridged = getBridgedBookNames(context.characters[target.chid]).includes(bookName);
+        try {
+            const applied = await setBookBridgeMode(target.chid, bookName, !currentlyBridged);
+            if (!applied) {
+                toastr.info(`"${bookName}" stays linked as it was.`, 'Janitor AI Script Bridge');
+            }
+        } catch (error) {
+            console.warn('[JaiBridge] Book mode switch failed', error);
+            toastr.error(`Mode switch failed: ${error?.message ?? error}`, 'Janitor AI Script Bridge');
+        }
+        refreshBooksSection(panel);
     });
     panel.on('click', '.jai-forget-book', async function () {
         const bookName = String($(this).closest('.jai-book-item').data('name'));
         const confirmed = await callGenericPopup(
-            `Forget "${escapeHtml(bookName)}"? The World Info book itself is kept — Janitor gating rules are dropped and it becomes a plain book.`,
+            `Forget "${escapeHtml(bookName)}"? The World Info book itself is kept — Janitor bridge data is dropped and it becomes a plain book.`,
             POPUP_TYPE.CONFIRM,
         );
         if (confirmed === POPUP_RESULT.AFFIRMATIVE) {
+            const context = getContext();
+            const target = getAssignmentTarget(context);
+            if (target) {
+                try {
+                    await removeBridgedBook(target.chid, bookName);
+                } catch (error) {
+                    console.warn('[JaiBridge] Failed to detach bridged book', error);
+                }
+            }
             await deleteConvertedBook(bookName);
             refreshBooksSection(panel);
         }
@@ -422,18 +492,26 @@ function wireBooksSection(panel) {
 function refreshBooksSection(panel) {
     const list = panel.find('#jai_book_list');
     list.empty();
+    const context = getContext();
+    const target = getAssignmentTarget(context);
+    const bridgedNames = target
+        ? new Set(getBridgedBookNames(context.characters[target.chid]))
+        : new Set();
     const names = getBookProvenanceNames();
     if (names.length === 0) {
         list.append('<div class="jai-empty">No imported Janitor lorebooks yet.</div>');
     }
     for (const name of names) {
         const provenance = getBookProvenance(name);
+        const isBridged = bridgedNames.has(name);
         list.append($(`
             <div class="jai-book-item" data-name="${escapeHtml(name)}">
                 <span class="jai-book-title" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                <span class="jai-badge ${isBridged ? 'bridged' : 'native'}">${isBridged ? 'Bridged' : 'Native'}</span>
                 <span class="jai-book-meta">${provenance?.entryCount ?? 0} entries</span>
+                <button class="menu_button jai-toggle-book-mode" title="Switch between Native (plain ST book) and Bridge mode (Janitor engine at runtime)"><i class="fa-solid fa-right-left"></i></button>
                 <button class="menu_button jai-export-book" title="Re-export original Janitor JSON"><i class="fa-solid fa-file-export"></i></button>
-                <button class="menu_button jai-forget-book" title="Forget gating / provenance"><i class="fa-solid fa-link-slash"></i></button>
+                <button class="menu_button jai-forget-book" title="Forget bridge data / provenance"><i class="fa-solid fa-link-slash"></i></button>
             </div>
         `));
     }
