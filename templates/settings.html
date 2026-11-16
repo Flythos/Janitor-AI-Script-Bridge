@@ -1,0 +1,89 @@
+<div id="jai_bridge_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Janitor AI Script Bridge</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="jai-hint">
+                Runs Janitor AI bot scripts in SillyTavern: <b>JS scripts</b> execute before every generation
+                (send, swipe, regenerate, group drafts) and their output is injected into the prompt for that turn only.
+                <b>Lorebook JSON</b> is converted 1:1 into a native World Info book linked to the selected character.
+            </div>
+
+            <!-- Script library -->
+            <div class="jai-section">
+                <div class="jai-section-title"><i class="fa-solid fa-scroll"></i> Script library</div>
+                <div id="jai_script_list" class="jai-script-list"></div>
+                <div>
+                    <button id="jai_new_script" class="menu_button" title="Create a new Advanced script"><i class="fa-solid fa-plus"></i> New script</button>
+                    <button id="jai_import_file_button" class="menu_button" title="Import .js or .json files"><i class="fa-solid fa-file-import"></i> Import file</button>
+                    <button id="jai_import_paste_button" class="menu_button" title="Paste JS code or Janitor lorebook JSON"><i class="fa-solid fa-paste"></i> Paste / import</button>
+                    <input id="jai_import_file" type="file" accept=".js,.json,.txt" multiple class="jai-hidden" />
+                </div>
+            </div>
+
+            <!-- Assignment -->
+            <div class="jai-section">
+                <div class="jai-section-title"><i class="fa-solid fa-layer-group"></i> Script stack — <span id="jai_assign_char"></span></div>
+                <div id="jai_assignment_wrapper">
+                    <div class="jai-hint">Runs top to bottom; later scripts see what earlier scripts added. Drag to reorder.</div>
+                    <div id="jai_group_member_select_wrapper" class="jai-hidden">
+                        <label for="jai_group_member_select">Group member:</label>
+                        <select id="jai_group_member_select"></select>
+                    </div>
+                    <div id="jai_assign_list" class="jai-assign-list"></div>
+                    <div>
+                        <select id="jai_assign_select"></select>
+                        <button id="jai_assign_add" class="menu_button" title="Assign the selected script to this character"><i class="fa-solid fa-plus"></i> Assign</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Converted lorebooks -->
+            <div class="jai-section">
+                <div class="jai-section-title"><i class="fa-solid fa-book"></i> Imported Janitor lorebooks</div>
+                <div class="jai-hint">Imported lorebook JSON becomes a regular World Info book linked to the character at import time.
+                    Min-Messages and Group-Selection rules are enforced by this plugin per generation.</div>
+                <div id="jai_book_list" class="jai-book-list"></div>
+            </div>
+
+            <!-- Options -->
+            <div class="jai-section">
+                <div class="jai-section-title"><i class="fa-solid fa-gear"></i> Options</div>
+                <div class="jai-options">
+                    <div class="jai-option-row">
+                        <label for="jai_opt_injection" title="Faithful: writes script results into the character fields for this generation only (like Janitor). Ephemeral: injects the text as an extension prompt without touching the character.">Injection mode</label>
+                        <select id="jai_opt_injection">
+                            <option value="faithful">Faithful (Janitor-like)</option>
+                            <option value="ephemeral">Ephemeral (extension prompt)</option>
+                        </select>
+                    </div>
+                    <div class="jai-option-row">
+                        <label for="jai_opt_impersonate" title="Janitor has no user-message generation; scripts are skipped when using /impersonate unless enabled here.">Run scripts on impersonate</label>
+                        <input id="jai_opt_impersonate" type="checkbox" />
+                    </div>
+                    <div class="jai-option-row">
+                        <label for="jai_opt_debug" title="Capture console output, diffs and errors of every script run.">Debug capture</label>
+                        <input id="jai_opt_debug" type="checkbox" />
+                    </div>
+                    <div class="jai-option-row">
+                        <label for="jai_opt_timeout" title="Scripts that run longer are killed (Janitor silently drops such scripts).">Script timeout (ms)</label>
+                        <input id="jai_opt_timeout" type="number" min="50" step="50" />
+                    </div>
+                    <div class="jai-option-row">
+                        <label for="jai_opt_depth" title="Default scan depth (messages searched for keys) for converted Janitor lorebooks. Janitor default is 3.">Default lorebook scan depth</label>
+                        <input id="jai_opt_depth" type="number" min="1" max="10" step="1" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debug -->
+            <div class="jai-section" id="jai_debug_section">
+                <div class="jai-section-title"><i class="fa-solid fa-bug"></i> Debug</div>
+                <div class="jai-hint">Shows the report of the last generation: per-script output, changes, errors, lorebook gating.</div>
+                <button id="jai_debug_view" class="menu_button"><i class="fa-solid fa-eye"></i> Last generation report</button>
+            </div>
+        </div>
+    </div>
+</div>

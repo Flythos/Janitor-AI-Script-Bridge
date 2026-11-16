@@ -1,0 +1,322 @@
+/* Janitor AI Script Bridge — settings panel styles */
+
+.jai-hidden {
+    display: none !important;
+}
+
+.jai-ok {
+    color: var(--okGreen, #2e7d32);
+}
+
+/* Floating "Scripts" panel (opened from the options menu, like Author's Note) */
+#jaiScriptsPanel {
+    overflow-y: auto;
+    max-width: 90dvw;
+    max-height: 90dvh;
+    min-width: 100px;
+    min-height: 100px;
+    border-radius: 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    position: fixed;
+    padding: 10px;
+    padding-top: 25px;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 0 10px var(--black70a);
+    z-index: 4000;
+    left: 0;
+    top: 0;
+    margin: 0;
+    right: unset;
+    width: calc(((100dvw - var(--sheldWidth)) / 2) - 1px);
+    height: unset;
+}
+
+#jaiScriptsPanel .drag-grabber {
+    position: unset;
+}
+
+#jaiScriptsPanel .jai-panel-body {
+    overflow-y: auto;
+}
+
+#jaiScriptsPanel .jai-panel-buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+#jaiScriptsPanel .jai-panel-select {
+    flex: 1 1 auto;
+    min-width: 8rem;
+    max-width: 16rem;
+    margin-bottom: 0;
+}
+
+#jaiScriptsPanel .jai-panel-member-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
+#jaiScriptsPanel .jai-disabled-script {
+    opacity: 0.55;
+}
+
+#jaiScriptsPanel .jai-section-title {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#jaiScriptsPanel .jai-hint {
+    opacity: 0.75;
+    font-size: 0.9em;
+    margin-bottom: 0.5rem;
+}
+
+#jai_bridge_settings .jai-section {
+    margin-bottom: 1rem;
+}
+
+#jai_bridge_settings .jai-section-title {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#jai_bridge_settings .jai-hint {
+    opacity: 0.75;
+    font-size: 0.9em;
+    margin-bottom: 0.5rem;
+}
+
+/* Script library list */
+#jai_bridge_settings .jai-script-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+#jai_bridge_settings .jai-script-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background-color: var(--SmartThemeBlurTintColor);
+}
+
+#jai_bridge_settings .jai-script-item .jai-script-title {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jai_bridge_settings .jai-script-item .jai-badge {
+    flex: 0 0 auto;
+    font-size: 0.8em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    opacity: 0.85;
+}
+
+#jai_bridge_settings .jai-script-item .jai-badge.advanced {
+    background-color: rgba(120, 120, 255, 0.15);
+}
+
+#jai_bridge_settings .jai-script-item .jai-badge.lorebook {
+    background-color: rgba(120, 255, 150, 0.12);
+}
+
+#jai_bridge_settings .jai-script-item .jai-depth {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+#jai_bridge_settings .jai-script-item .jai-script-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 0.15rem;
+}
+
+#jai_bridge_settings .jai-script-item .jai-script-actions .menu_button {
+    padding: 0.15rem 0.4rem;
+}
+
+#jai_bridge_settings .jai-empty {
+    opacity: 0.7;
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+/* Assignment list (shared: Extensions panel + floating Scripts panel) */
+#jai_bridge_settings .jai-assign-list,
+#jaiScriptsPanel .jai-assign-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+#jai_bridge_settings .jai-assign-item,
+#jaiScriptsPanel .jai-assign-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: move;
+    background-color: var(--SmartThemeBlurTintColor);
+}
+
+#jai_bridge_settings .jai-assign-item .jai-order-icon,
+#jaiScriptsPanel .jai-assign-item .jai-order-icon {
+    opacity: 0.6;
+}
+
+#jai_bridge_settings .jai-assign-item .jai-assign-title,
+#jaiScriptsPanel .jai-assign-item .jai-assign-title {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Converted books list */
+#jai_bridge_settings .jai-book-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+#jai_bridge_settings .jai-book-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background-color: var(--SmartThemeBlurTintColor);
+}
+
+#jai_bridge_settings .jai-book-item .jai-book-title {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jai_bridge_settings .jai-book-item .jai-book-meta {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+/* Options grid */
+#jai_bridge_settings .jai-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+#jai_bridge_settings .jai-option-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#jai_bridge_settings .jai-option-row label {
+    flex: 1 1 auto;
+}
+
+#jai_bridge_settings .jai-option-row select,
+#jai_bridge_settings .jai-option-row input[type="number"] {
+    flex: 0 0 auto;
+    max-width: 12rem;
+}
+
+/* Import dialog */
+#jai_import_paste_area,
+#jai_paste_area {
+    width: 100%;
+    min-height: 10rem;
+    font-family: var(--monospaceFont);
+    font-size: 0.85em;
+    resize: vertical;
+}
+
+/* Floating panel on narrow screens: don't hug the gutter width */
+@media (max-width: 900px) {
+    #jaiScriptsPanel {
+        width: min(90dvw, 480px);
+    }
+}
+
+/* Debug report popup */
+.jai-debug-report {
+    max-height: 60vh;
+    overflow-y: auto;
+    text-align: left;
+    font-size: 0.9em;
+}
+
+.jai-debug-report .jai-run {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.jai-debug-report .jai-run-title {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.jai-debug-report .jai-badge {
+    font-size: 0.85em;
+    opacity: 0.75;
+    margin-right: 0.35rem;
+}
+
+.jai-debug-report .jai-run-error {
+    color: var(--warning);
+}
+
+.jai-debug-report pre.jai-logs {
+    background-color: var(--black30a);
+    border-radius: 4px;
+    padding: 0.35rem;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.25rem 0;
+}
+
+.jai-debug-report .jai-diff {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background-color: var(--black30a);
+    border-radius: 4px;
+    padding: 0.35rem;
+    margin: 0.25rem 0;
+    font-size: 0.85em;
+}
+
+.jai-debug-report .jai-injection-summary,
+.jai-debug-report .jai-gating-summary {
+    margin-top: 0.4rem;
+}

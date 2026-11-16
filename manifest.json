@@ -1,0 +1,11 @@
+{
+    "display_name": "Janitor AI Script Bridge",
+    "loading_order": 1000,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Biede",
+    "version": "0.2.0",
+    "generate_interceptor": "JaiRunScripts"
+}

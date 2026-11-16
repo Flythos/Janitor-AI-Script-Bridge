@@ -1,0 +1,56 @@
+<div id="jaiScriptsPanel" class="drawer-content jai-floating-panel" style="display: none;">
+    <div class="panelControlBar flex-container alignItemsBaseline">
+        <div id="jaiScriptsPanelheader" class="fa-fw fa-solid fa-grip drag-grabber hoverglow"></div>
+        <div id="jaiScriptsPanelClose" class="fa-fw fa-solid fa-circle-xmark floating_panel_close hoverglow"></div>
+    </div>
+
+    <div class="jai-panel-body">
+        <div class="inline-drawer">
+            <div id="jaiChatScriptsToggle" class="inline-drawer-toggle inline-drawer-header">
+                <div class="flex-container flexFlowColumn">
+                    <b>Scripts for this chat</b>
+                    <small>Saved to this chat. Checkpoints inherit it from their parent, and can be changed individually after that.</small>
+                </div>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+                <div class="jai-hint">Runs after the character's stack, top to bottom — later scripts see what earlier scripts added. Drag to reorder.</div>
+                <div id="jai_panel_chat_list" class="jai-assign-list"></div>
+                <div class="jai-panel-buttons">
+                    <select id="jai_panel_chat_select" class="jai-panel-select"></select>
+                    <button id="jai_panel_chat_add" class="menu_button" title="Attach a library script to this chat"><i class="fa-solid fa-plus"></i> Add</button>
+                    <button id="jai_panel_chat_import" class="menu_button" title="Import .js or .json files and attach them to this chat"><i class="fa-solid fa-file-import"></i> Import</button>
+                    <button id="jai_panel_chat_paste" class="menu_button" title="Paste JS code or Janitor JSON and attach it to this chat"><i class="fa-solid fa-paste"></i> Paste</button>
+                    <input id="jai_panel_chat_file" type="file" accept=".js,.json,.txt" multiple class="jai-hidden" />
+                </div>
+            </div>
+        </div>
+
+        <hr class="sysHR">
+
+        <div class="inline-drawer">
+            <div id="jaiCharScriptsToggle" class="inline-drawer-toggle inline-drawer-header">
+                <div class="flex-container flexFlowColumn">
+                    <b>Scripts for <span id="jai_panel_char_name"></span></b>
+                    <small>Saved on the character card and shared by all of its chats.</small>
+                </div>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+                <div id="jai_panel_member_wrapper" class="jai-hidden jai-panel-member-wrapper">
+                    <label for="jai_panel_member_select">Group member:</label>
+                    <select id="jai_panel_member_select"></select>
+                </div>
+                <div class="jai-hint">Janitor's bot-level stack. Runs first, top to bottom — later scripts see what earlier scripts added. Drag to reorder.</div>
+                <div id="jai_panel_char_list" class="jai-assign-list"></div>
+                <div class="jai-panel-buttons">
+                    <select id="jai_panel_char_select" class="jai-panel-select"></select>
+                    <button id="jai_panel_char_add" class="menu_button" title="Attach a library script to this character"><i class="fa-solid fa-plus"></i> Add</button>
+                    <button id="jai_panel_char_import" class="menu_button" title="Import .js or .json files and attach them to this character"><i class="fa-solid fa-file-import"></i> Import</button>
+                    <button id="jai_panel_char_paste" class="menu_button" title="Paste JS code or Janitor JSON and attach it to this character"><i class="fa-solid fa-paste"></i> Paste</button>
+                    <input id="jai_panel_char_file" type="file" accept=".js,.json,.txt" multiple class="jai-hidden" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
