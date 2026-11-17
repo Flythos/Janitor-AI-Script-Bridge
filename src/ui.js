@@ -159,11 +159,11 @@ export async function openScriptEditor(id, { onCreated = null, onChanged = null 
             <div class="jai-editor-grid">
                 <div class="jai-form-row">
                     <label class="jai-form-label" for="jai_editor_title">Title</label>
-                    <input id="jai_editor_title" type="text" maxlength="100" />
+                    <input id="jai_editor_title" class="text_pole" type="text" maxlength="100" />
                 </div>
                 <div class="jai-form-row">
                     <label class="jai-form-label" for="jai_editor_desc">Description</label>
-                    <input id="jai_editor_desc" type="text" maxlength="500" />
+                    <input id="jai_editor_desc" class="text_pole" type="text" maxlength="500" />
                 </div>
             </div>
             <div class="jai-form-row">
@@ -282,7 +282,7 @@ export async function openPasteImportDialog() {
         <div class="jai-paste-dialog">
             <div class="jai-form-row">
                 <label class="jai-form-label" for="jai_paste_title">Title <span class="jai-form-label-note">optional — used for the script or lorebook</span></label>
-                <input id="jai_paste_title" type="text" maxlength="100" />
+                <input id="jai_paste_title" class="text_pole" type="text" maxlength="100" />
             </div>
             <div class="jai-form-row">
                 <label class="jai-form-label">Paste JavaScript (Advanced script) or Janitor lorebook / script / bundle JSON</label>

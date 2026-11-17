@@ -371,34 +371,69 @@
     opacity: 0.8;
 }
 
-/* Token palette — theme-aware via ST variables so it follows the user's theme. */
+/* Token palette — fixed, editor-standard hues (VSCode Dark+ / Light+), NOT
+   theme variables: mixed theme accents are what made the highlighting look
+   random. Which variant applies is decided by the widget from the theme's
+   body-color luminance (.jai-ce-light on the root). Plain text stays the
+   theme's body color so the editor still blends with the UI. */
 .jai-tok-comment {
-    opacity: 0.55;
+    color: #6a9955;
     font-style: italic;
 }
 
 .jai-tok-string {
-    color: var(--SmartThemeEmColor, #9ce29c);
+    color: #ce9178;
 }
 
 .jai-tok-embed {
-    color: var(--golden, #f8d300);
-    opacity: 0.85;
+    color: #dcdcaa;
 }
 
-.jai-tok-keyword {
-    color: var(--SmartThemeQuoteColor, #e18a24);
-    font-weight: 600;
-}
-
+.jai-tok-keyword,
 .jai-tok-literal {
-    color: var(--golden, #f8d300);
-    font-weight: 700;
+    color: #569cd6;
 }
 
-.jai-tok-number,
+.jai-tok-number {
+    color: #b5cea8;
+}
+
 .jai-tok-function {
-    font-weight: 700;
+    color: #dcdcaa;
+}
+
+.jai-tok-property {
+    color: #9cdcfe;
+}
+
+/* Light themes — VSCode Light+ */
+.jai-ce-light .jai-tok-comment {
+    color: #008000;
+}
+
+.jai-ce-light .jai-tok-string {
+    color: #a31515;
+}
+
+.jai-ce-light .jai-tok-embed {
+    color: #795e26;
+}
+
+.jai-ce-light .jai-tok-keyword,
+.jai-ce-light .jai-tok-literal {
+    color: #0000ff;
+}
+
+.jai-ce-light .jai-tok-number {
+    color: #098658;
+}
+
+.jai-ce-light .jai-tok-function {
+    color: #795e26;
+}
+
+.jai-ce-light .jai-tok-property {
+    color: #001080;
 }
 
 /* --- script editor modal (shared design language with the Prompt Patches
@@ -445,6 +480,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+}
+
+/* text_pole carries ST's own field styling (dark, theme-colored); only its
+   vertical margin doesn't fit the row's gap. */
+.jai-form-row .text_pole {
+    margin: 0;
 }
 
 .jai-form-label {

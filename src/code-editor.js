@@ -69,6 +69,13 @@ function renderToken(match, re, source) {
         if (LITERALS.has(word)) {
             return `<span class="jai-tok-literal">${escapeHtml(word)}</span>`;
         }
+        // Object keys ("name:") and member access ("obj.prop") — the property
+        // look, like VSCode. Ternaries may catch strays; acceptable heuristic.
+        const isKey = /^\s*:/.test(source.slice(re.lastIndex));
+        const isMember = source[match.index - 1] === '.';
+        if (isKey || isMember) {
+            return `<span class="jai-tok-property">${escapeHtml(word)}</span>`;
+        }
         // Identifier directly followed by '(' — color it as a call.
         if (/^\s*\(/.test(source.slice(re.lastIndex))) {
             return `<span class="jai-tok-function">${escapeHtml(word)}</span>`;
@@ -111,6 +118,28 @@ export function highlightJavaScript(source) {
 // --- editor widget (browser-only) ---
 
 /**
+ * True when the user's theme renders light backgrounds. --SmartThemeBodyColor
+ * is ST's TEXT color, so light text means a dark theme; the check measures its
+ * luminance and flips accordingly. Any unresolvable value counts as dark
+ * (most ST themes are).
+ */
+function isLightTheme() {
+    const probe = document.createElement('span');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.display = 'none';
+    probe.style.color = 'var(--SmartThemeBodyColor)';
+    document.body.appendChild(probe);
+    const rgb = getComputedStyle(probe).color;
+    probe.remove();
+    const m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(rgb);
+    if (!m) {
+        return false;
+    }
+    const luminance = 0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3]);
+    return luminance < 128; // dark text on the UI = light theme
+}
+
+/**
  * Builds the editor. Returns plain DOM nodes so this module stays
  * jQuery-free; callers wrap the root in $() themselves.
  *
@@ -129,6 +158,7 @@ export function createCodeEditor({ value = '', height = 340, placeholder = '', a
 
     const root = document.createElement('div');
     root.className = 'jai-code-editor';
+    root.classList.toggle('jai-ce-light', isLightTheme());
     root.style.height = `${Math.max(160, Math.round(height))}px`;
 
     const gutter = document.createElement('div');

@@ -643,8 +643,8 @@ test('highlightJavaScript: keywords, numbers, literals, calls', () => {
     assert.match(html, /<span class="jai-tok-literal">true<\/span>/);
     assert.match(html, /<span class="jai-tok-literal">null<\/span>/);
     assert.match(html, /<span class="jai-tok-function">foo<\/span>/);
-    // .get( / .set( must color as calls, not as accessor keywords
-    assert.match(html, /<span class="jai-tok-function">set<\/span>/);
+    // .get( / .set( are member calls — property color, not accessor keywords
+    assert.match(html, /<span class="jai-tok-property">set<\/span>/);
     // plain identifiers stay unspanned
     assert.ok(!html.includes('jai-tok-"x"') && !/jai-tok-\w+">x<\/span>/.test(html));
 });
@@ -688,6 +688,21 @@ test('highlightJavaScript: unterminated string stops at line end', () => {
     const html = highlightJavaScript("const a = 'open\nconst b = 2;");
     assert.match(html, /<span class="jai-tok-string">'open<\/span>/);
     assert.match(html, /jai-tok-keyword">const<\/span>/);
+});
+
+test('highlightJavaScript: object keys and member access color as properties', () => {
+    const html = highlightJavaScript('const cfg = { name: "x" }; foo.bar; obj.baz(1);');
+    assert.match(html, /<span class="jai-tok-property">name<\/span>/);
+    assert.match(html, /<span class="jai-tok-property">bar<\/span>/);
+    assert.match(html, /<span class="jai-tok-property">baz<\/span>/); // member call: property wins over function
+    assert.ok(!/<span class="jai-tok-property">cfg<\/span>/.test(html));
+    assert.ok(!/<span class="jai-tok-property">foo<\/span>/.test(html));
+});
+
+test('highlightJavaScript: reserved word as object key stays a keyword', () => {
+    const html = highlightJavaScript('const a = { default: 0, in: 1 };');
+    assert.match(html, /<span class="jai-tok-keyword">default<\/span>/);
+    assert.match(html, /<span class="jai-tok-keyword">in<\/span>/);
 });
 
 test('highlightJavaScript: empty/undefined input', () => {
