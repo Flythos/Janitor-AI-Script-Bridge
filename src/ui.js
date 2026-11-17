@@ -21,6 +21,7 @@ import {
 } from './storage.js';
 import { deleteConvertedBook, exportBookOriginal, setBookBridgeMode } from './lorebook.js';
 import { detectAndImport, importFile } from './importer.js';
+import { createCodeEditor } from './code-editor.js';
 import { showReportPopup } from './report.js';
 
 // `$` (jQuery) and `toastr` are page-level globals provided by SillyTavern.
@@ -129,7 +130,9 @@ function refreshLibrarySection(panel) {
 }
 
 /**
- * Opens the script editor popup for a library script.
+ * Opens the script editor popup for a library script. Layout follows the
+ * Prompt Patches panel's design language: a titled header row, small form
+ * labels, and a rounded, bordered code box.
  *
  * @param {string|null} id Existing script id, or null to create a new script
  * @param {object} [hooks] Optional callbacks
@@ -140,19 +143,43 @@ function refreshLibrarySection(panel) {
  */
 export async function openScriptEditor(id, { onCreated = null, onChanged = null } = {}) {
     const existing = id ? getScript(id) : null;
+    const codeEditor = createCodeEditor({
+        value: existing?.code ?? '',
+        height: 380,
+        placeholder: '// JavaScript — runs before every generation',
+        ariaLabel: 'Script code',
+    });
     const editor = $(`
         <div class="jai-script-editor">
-            <label for="jai_editor_title">Title</label>
-            <input id="jai_editor_title" type="text" maxlength="100" />
-            <label for="jai_editor_desc">Description</label>
-            <input id="jai_editor_desc" type="text" maxlength="500" />
-            <label for="jai_editor_code">Script code — runs before every generation; mutate <code>context.character.personality</code>, <code>context.character.scenario</code>, <code>context.chat.last_messages</code>, …</label>
-            <textarea id="jai_editor_code" spellcheck="false"></textarea>
+            <div class="jai-editor-header">
+                <i class="fa-solid fa-scroll"></i>
+                <span class="jai-editor-title">Script editor</span>
+                <span class="jai-editor-mode">${existing ? 'Editing' : 'New script'}</span>
+            </div>
+            <div class="jai-editor-grid">
+                <div class="jai-form-row">
+                    <label class="jai-form-label" for="jai_editor_title">Title</label>
+                    <input id="jai_editor_title" type="text" maxlength="100" />
+                </div>
+                <div class="jai-form-row">
+                    <label class="jai-form-label" for="jai_editor_desc">Description</label>
+                    <input id="jai_editor_desc" type="text" maxlength="500" />
+                </div>
+            </div>
+            <div class="jai-form-row">
+                <label class="jai-form-label" for="jai_editor_code">Script code</label>
+                <div class="jai-editor-mount"></div>
+            </div>
+            <div class="jai-editor-hint">
+                JavaScript — runs before every generation. Mutate
+                <code>context.character.personality</code>, <code>context.character.scenario</code>,
+                <code>context.chat.last_messages</code>, … — the changes apply to this turn's prompt only.
+            </div>
         </div>
     `);
+    editor.find('.jai-editor-mount').replaceWith(codeEditor.root);
     editor.find('#jai_editor_title').val(existing?.title ?? '');
     editor.find('#jai_editor_desc').val(existing?.description ?? '');
-    editor.find('#jai_editor_code').val(existing?.code ?? '');
 
     const result = await callGenericPopup(editor, POPUP_TYPE.CONFIRM, '', {
         okButton: 'Save',
@@ -166,7 +193,7 @@ export async function openScriptEditor(id, { onCreated = null, onChanged = null 
     const patch = {
         title: editor.find('#jai_editor_title').val(),
         description: editor.find('#jai_editor_desc').val(),
-        code: editor.find('#jai_editor_code').val(),
+        code: codeEditor.getValue(),
     };
     if (existing) {
         updateScript(existing.id, patch);
@@ -224,34 +251,59 @@ function wireImportSection(panel) {
     });
 
     panel.find('#jai_import_paste_button').on('click', async () => {
-        const dialog = $(`
-            <div>
-                <label for="jai_import_title">Title (optional — used for the script or lorebook)</label>
-                <input id="jai_import_title" type="text" maxlength="100" />
-                <label for="jai_import_paste_area">Paste JavaScript (Advanced script) or Janitor lorebook / script / bundle JSON here:</label>
-                <textarea id="jai_import_paste_area" spellcheck="false"></textarea>
-            </div>
-        `);
-        const result = await callGenericPopup(dialog, POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Import',
-            cancelButton: 'Cancel',
-            wide: true,
-            large: true,
-        });
-        if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        const picked = await openPasteImportDialog();
+        if (!picked) {
             return;
         }
-        const text = String(dialog.find('#jai_import_paste_area').val() ?? '');
-        const title = String(dialog.find('#jai_import_title').val() ?? '');
         const log = { warnings: [], books: [], scripts: 0 };
         try {
-            await detectAndImport(text, title, log);
+            await detectAndImport(picked.text, picked.title, log);
         } catch (error) {
             log.warnings.push(`Import failed: ${error?.message ?? error}`);
         }
         reportImportResult(log);
         refreshAllSections(panel);
     });
+}
+
+/**
+ * Paste-import dialog shared by the Extensions panel and the floating Scripts
+ * panel. Highlighted, patcher-styled code box.
+ *
+ * @returns {Promise<{title: string, text: string}|null>} null when cancelled
+ */
+export async function openPasteImportDialog() {
+    const codeEditor = createCodeEditor({
+        height: 260,
+        placeholder: '// JavaScript … or Janitor lorebook / script / bundle JSON',
+        ariaLabel: 'Pasted script code or lorebook JSON',
+    });
+    const dialog = $(`
+        <div class="jai-paste-dialog">
+            <div class="jai-form-row">
+                <label class="jai-form-label" for="jai_paste_title">Title <span class="jai-form-label-note">optional — used for the script or lorebook</span></label>
+                <input id="jai_paste_title" type="text" maxlength="100" />
+            </div>
+            <div class="jai-form-row">
+                <label class="jai-form-label">Paste JavaScript (Advanced script) or Janitor lorebook / script / bundle JSON</label>
+                <div class="jai-editor-mount"></div>
+            </div>
+        </div>
+    `);
+    dialog.find('.jai-editor-mount').replaceWith(codeEditor.root);
+    const result = await callGenericPopup(dialog, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Import',
+        cancelButton: 'Cancel',
+        wide: true,
+        large: true,
+    });
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return null;
+    }
+    return {
+        title: String(dialog.find('#jai_paste_title').val() ?? ''),
+        text: codeEditor.getValue(),
+    };
 }
 
 export function reportImportResult(log) {

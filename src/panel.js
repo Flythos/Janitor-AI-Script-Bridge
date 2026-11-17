@@ -25,7 +25,7 @@ import {
     getAssignment, getAssignedScripts, assignScript, unassignScript, setAssignment,
 } from './storage.js';
 import { detectAndImport, importFile } from './importer.js';
-import { getExtensionName, openScriptEditor, refreshExtensionsPanel, reportImportResult, getSelectedGroupMemberChid, setSelectedGroupMemberChid } from './ui.js';
+import { getExtensionName, openScriptEditor, openPasteImportDialog, refreshExtensionsPanel, reportImportResult, getSelectedGroupMemberChid, setSelectedGroupMemberChid } from './ui.js';
 
 // `$` (jQuery) and `toastr` are page-level globals provided by SillyTavern.
 
@@ -300,32 +300,17 @@ async function importFiles(files) {
 }
 
 /**
- * Paste-import dialog (same as the Extensions panel's). Resolves with the
+ * Paste-import dialog (shared with the Extensions panel). Resolves with the
  * created script ids; log is null when the dialog was cancelled.
  */
 async function pasteImport() {
-    const dialog = $(`
-        <div>
-            <label for="jai_paste_title">Title (optional — used for the script or lorebook)</label>
-            <input id="jai_paste_title" type="text" maxlength="100" />
-            <label for="jai_paste_area">Paste JavaScript (Advanced script) or Janitor lorebook / script / bundle JSON here:</label>
-            <textarea id="jai_paste_area" spellcheck="false"></textarea>
-        </div>
-    `);
-    const result = await callGenericPopup(dialog, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Import',
-        cancelButton: 'Cancel',
-        wide: true,
-        large: true,
-    });
-    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+    const picked = await openPasteImportDialog();
+    if (!picked) {
         return { log: null, createdIds: [] };
     }
-    const text = String(dialog.find('#jai_paste_area').val() ?? '');
-    const title = String(dialog.find('#jai_paste_title').val() ?? '');
     const before = new Set(getScriptIds());
     const log = { warnings: [], books: [], scripts: 0 };
-    await detectAndImport(text, title, log);
+    await detectAndImport(picked.text, picked.title, log);
     return { log, createdIds: getScriptIds().filter(id => !before.has(id)) };
 }
 

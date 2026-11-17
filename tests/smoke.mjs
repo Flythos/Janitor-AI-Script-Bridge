@@ -10,6 +10,7 @@ const SRC = new URL('../src/', import.meta.url).href;
 const { runScript, buildWorkerSource } = await import(SRC + 'runner.js');
 const { buildContext, snapshotSeeds, fieldDiff, CONTEXT_CHAR_FIELDS } = await import(SRC + 'context.js');
 const { runLorebookEngine } = await import(SRC + 'lorebook-engine.js');
+const { highlightJavaScript } = await import(SRC + 'code-editor.js');
 const {
     normalizeJanitorEntry, looksLikeLorebook, extractLorebookEntries,
     normalizeSecondaryLogic, normalizeGroupMode, normalizePlacement, normalizePosition,
@@ -629,6 +630,69 @@ testAsync('runScript: non-numeric timeout falls back to a sane default', async (
     const result = await runScript('context.character.personality += " ok";', context, NaN);
     assert.equal(result.ok, true, result.error ?? '');
     assert.match(result.context.character.personality, / ok$/);
+});
+
+console.log('— code-editor.js —');
+
+test('highlightJavaScript: keywords, numbers, literals, calls', () => {
+    const html = highlightJavaScript('const x = 1;\nif (x) foo(true, null); map.set(2);');
+    assert.match(html, /<span class="jai-tok-keyword">const<\/span>/);
+    assert.match(html, /<span class="jai-tok-keyword">if<\/span>/);
+    assert.match(html, /<span class="jai-tok-number">1<\/span>/);
+    assert.match(html, /<span class="jai-tok-number">2<\/span>/);
+    assert.match(html, /<span class="jai-tok-literal">true<\/span>/);
+    assert.match(html, /<span class="jai-tok-literal">null<\/span>/);
+    assert.match(html, /<span class="jai-tok-function">foo<\/span>/);
+    // .get( / .set( must color as calls, not as accessor keywords
+    assert.match(html, /<span class="jai-tok-function">set<\/span>/);
+    // plain identifiers stay unspanned
+    assert.ok(!html.includes('jai-tok-"x"') && !/jai-tok-\w+">x<\/span>/.test(html));
+});
+
+test('highlightJavaScript: comments (line, block, unterminated)', () => {
+    assert.match(highlightJavaScript('// hi'), /<span class="jai-tok-comment">\/\/ hi<\/span>/);
+    assert.match(highlightJavaScript('/* multi\nline */'), /<span class="jai-tok-comment">\/\* multi\nline \*\/<\/span>/);
+    assert.match(highlightJavaScript('/* open'), /<span class="jai-tok-comment">\/\* open<\/span>/);
+});
+
+test('highlightJavaScript: strings escape HTML-special characters', () => {
+    const html = highlightJavaScript("const s = 'a<b>&c';");
+    assert.match(html, /<span class="jai-tok-string">'a&lt;b&gt;&amp;c'<\/span>/);
+});
+
+test('highlightJavaScript: template string ${} embeds', () => {
+    const html = highlightJavaScript('`a ${name} & b`');
+    assert.match(html, /jai-tok-string">`a <span class="jai-tok-embed">\$\{name\}<\/span> &amp; b`<\/span>/);
+});
+
+test('highlightJavaScript: XSS payload is fully escaped', () => {
+    const html = highlightJavaScript('</textarea><img src=x onerror=alert(1)><script>void</script>');
+    assert.ok(!/[<]img|[<]script|[<]\/textarea/.test(html.replace(/&lt;/g, '<NEVER>')));
+    assert.match(html, /&lt;\/textarea&gt;/);
+    assert.match(html, /&lt;script&gt;/);
+});
+
+test('highlightJavaScript: whitespace preserved verbatim', () => {
+    assert.ok(highlightJavaScript('a\n  b\r\nc\t!').includes('\n  b\r\nc\t!'));
+});
+
+test('highlightJavaScript: JSON documents highlight via the JS tokenizer', () => {
+    const html = highlightJavaScript('{ "key": [1, null], "n": -2.5e1 }');
+    assert.match(html, /<span class="jai-tok-string">"key"<\/span>/);
+    assert.match(html, /<span class="jai-tok-number">1<\/span>/);
+    assert.match(html, /<span class="jai-tok-literal">null<\/span>/);
+    assert.match(html, /<span class="jai-tok-number">2.5e1<\/span>/);
+});
+
+test('highlightJavaScript: unterminated string stops at line end', () => {
+    const html = highlightJavaScript("const a = 'open\nconst b = 2;");
+    assert.match(html, /<span class="jai-tok-string">'open<\/span>/);
+    assert.match(html, /jai-tok-keyword">const<\/span>/);
+});
+
+test('highlightJavaScript: empty/undefined input', () => {
+    assert.equal(highlightJavaScript(''), '');
+    assert.equal(highlightJavaScript(undefined), '');
 });
 
 await Promise.all(pendingAsyncTests);

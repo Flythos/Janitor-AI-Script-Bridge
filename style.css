@@ -265,14 +265,206 @@
     max-width: 12rem;
 }
 
-/* Import dialog */
-#jai_import_paste_area,
-#jai_paste_area {
+/* --- code editor (script editor + paste-import dialogs) ---
+   Transparent <textarea> layered over a highlighted <pre> (see code-editor.js).
+   The two layers and the gutter MUST keep identical font metrics, padding and
+   no soft-wrap, or the lines drift apart. --monoFontFamily is ST's monospace
+   variable (--monospaceFont does not exist in ST 1.19). */
+
+.jai-code-editor {
+    display: flex;
     width: 100%;
-    min-height: 10rem;
-    font-family: var(--monospaceFont);
-    font-size: 0.85em;
+    height: 340px;
+    min-height: 160px;
+    max-height: 70dvh;
+    overflow: hidden;
     resize: vertical;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--black30a);
+}
+
+.jai-code-editor:focus-within {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.jai-ce-gutter {
+    flex: 0 0 auto;
+    overflow: hidden;
+    padding: 8px 0;
+    user-select: none;
+    border-right: 1px solid var(--SmartThemeBorderColor);
+}
+
+.jai-ce-gutter-lines {
+    font-family: var(--monoFontFamily, 'Noto Sans Mono', 'Courier New', Consolas, monospace);
+    font-size: 0.85em;
+    line-height: 1.45;
+    white-space: pre;
+    text-align: right;
+    min-width: 2.2rem;
+    padding: 0 0.5rem;
+    opacity: 0.55;
+    will-change: transform;
+}
+
+.jai-ce-surface {
+    flex: 1 1 auto;
+    position: relative;
+    min-width: 0;
+}
+
+/* Shared metrics for the highlight layer and the input layer. */
+.jai-code-editor .jai-ce-layer {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 8px 10px;
+    border: 0;
+    font-family: var(--monoFontFamily, 'Noto Sans Mono', 'Courier New', Consolas, monospace);
+    font-size: 0.85em;
+    line-height: 1.45;
+    letter-spacing: normal;
+    tab-size: 4;
+    white-space: pre;
+    word-wrap: normal;
+    overflow-wrap: normal;
+    background: transparent;
+}
+
+.jai-ce-highlight {
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.jai-ce-code {
+    display: block;
+    font: inherit;
+    /* Neutralize ST's global `code` style (border, background, padding and
+       white-space: pre-wrap — the wrap would desync the two layers). */
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    white-space: pre;
+    word-break: normal;
+    overflow-wrap: normal;
+    line-height: inherit;
+    color: var(--SmartThemeBodyColor);
+}
+
+.jai-ce-input {
+    overflow: auto;
+    z-index: 1;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--SmartThemeBodyColor);
+    resize: none;
+    outline: none;
+    width: 100%;
+    height: 100%;
+}
+
+.jai-ce-input::placeholder {
+    color: var(--grey50, #7d7d7d);
+    opacity: 0.8;
+}
+
+/* Token palette — theme-aware via ST variables so it follows the user's theme. */
+.jai-tok-comment {
+    opacity: 0.55;
+    font-style: italic;
+}
+
+.jai-tok-string {
+    color: var(--SmartThemeEmColor, #9ce29c);
+}
+
+.jai-tok-embed {
+    color: var(--golden, #f8d300);
+    opacity: 0.85;
+}
+
+.jai-tok-keyword {
+    color: var(--SmartThemeQuoteColor, #e18a24);
+    font-weight: 600;
+}
+
+.jai-tok-literal {
+    color: var(--golden, #f8d300);
+    font-weight: 700;
+}
+
+.jai-tok-number,
+.jai-tok-function {
+    font-weight: 700;
+}
+
+/* --- script editor modal (shared design language with the Prompt Patches
+   panel: title row + small labels + rounded, bordered boxes) --- */
+
+.jai-script-editor,
+.jai-paste-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    text-align: left;
+}
+
+.jai-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.jai-editor-title {
+    font-weight: bold;
+}
+
+.jai-editor-mode {
+    font-size: x-small;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    color: var(--SmartThemeQuoteColor);
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 6px;
+    padding: 1px 5px;
+    white-space: nowrap;
+}
+
+.jai-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    gap: 0.5rem 0.75rem;
+}
+
+.jai-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.jai-form-label {
+    font-size: smaller;
+    opacity: 0.8;
+    margin: 0;
+}
+
+.jai-form-label .jai-form-label-note {
+    opacity: 0.85;
+    font-weight: normal;
+}
+
+.jai-editor-hint {
+    font-size: smaller;
+    opacity: 0.75;
+}
+
+.jai-editor-hint code {
+    opacity: 1;
 }
 
 /* Floating panel on narrow screens: don't hug the gutter width */
